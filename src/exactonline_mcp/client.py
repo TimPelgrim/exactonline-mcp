@@ -260,9 +260,11 @@ class ExactOnlineClient:
         response = await self._request("GET", url)
         data = response.json()
 
-        # Exact Online returns data in 'd' wrapper
-        result = data.get("d", data)
-        return result.get("CurrentDivision")
+        # Exact Online returns data in 'd.results' array
+        results = data.get("d", {}).get("results", [])
+        if results:
+            return results[0].get("CurrentDivision")
+        return None
 
     async def get_divisions(self) -> list[Division]:
         """Get all accessible divisions.

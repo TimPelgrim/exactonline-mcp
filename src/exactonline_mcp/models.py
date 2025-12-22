@@ -90,7 +90,7 @@ class Token:
             access_token=data["access_token"],
             refresh_token=data["refresh_token"],
             obtained_at=obtained_at,
-            expires_in=data.get("expires_in", 600),
+            expires_in=int(data.get("expires_in", 600)),
         )
 
 
