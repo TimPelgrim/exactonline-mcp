@@ -132,8 +132,8 @@ Claude: [Uses explore_endpoint with "crm/Accounts"] Here are 5 sample accounts:
 You: What financial endpoints are available?
 Claude: [Uses list_endpoints with category "financial"]
 - financial/GLAccounts: General ledger accounts
-- financial/Receivables: Outstanding receivables
-- financial/ReportingBalance: Balance reporting
+- cashflow/Receivables: Outstanding receivables
+- financialtransaction/TransactionLines: Transaction lines (journal entries)
 ```
 
 ## Troubleshooting

@@ -67,4 +67,9 @@ uv run ruff check .
 - 001-discovery-tools: Initial MCP server with discovery tools
 
 <!-- MANUAL ADDITIONS START -->
+## Implementation Notes
+
+- FastMCP uses `instructions` parameter (not `description`) for server description
+- Token refresh uses 30-second buffer before expiry for safety margin
+- Rate limiter uses sliding 60-second window tracking
 <!-- MANUAL ADDITIONS END -->
