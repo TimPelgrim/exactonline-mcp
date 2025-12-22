@@ -392,8 +392,12 @@ class ExactOnlineClient:
             top=top,
         )
 
-        # Extract results
-        results = data.get("d", {}).get("results", [])
+        # Extract results - handle both d.results (system endpoints) and d as array (data endpoints)
+        d = data.get("d", [])
+        if isinstance(d, dict):
+            results = d.get("results", [])
+        else:
+            results = d if isinstance(d, list) else []
 
         # Extract available fields from first record
         available_fields: list[str] = []
