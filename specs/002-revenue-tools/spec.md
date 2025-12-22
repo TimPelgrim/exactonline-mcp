@@ -57,11 +57,11 @@ As a project manager, I want to see revenue per project so I can track project p
 
 ### Edge Cases
 
-- What happens when date range spans multiple fiscal years?
-- How does system handle invoices in draft/unpaid status vs. finalized invoices?
-- What happens when division parameter is invalid or user lacks access?
-- How are credit notes (negative invoices) handled in revenue calculations?
-- What happens when API rate limit is reached during data aggregation?
+- Date ranges spanning multiple fiscal years: system aggregates all invoices within range regardless of fiscal year boundaries
+- Draft/unpaid invoices: excluded from revenue calculations (only finalized invoices included)
+- Invalid division or access denied: return structured error response per FR-012
+- Credit notes: included in totals as negative amounts, reducing overall revenue
+- API rate limit reached: handled by existing ExactOnlineClient retry logic per FR-010
 
 ## Requirements *(mandatory)*
 
@@ -97,11 +97,19 @@ As a project manager, I want to see revenue per project so I can track project p
 - **SC-005**: All three tools handle empty result sets gracefully without errors
 - **SC-006**: Tools integrate seamlessly with Claude Desktop via MCP protocol
 
+## Clarifications
+
+### Session 2025-12-22
+
+- Q: How are credit notes (negative invoices) handled in revenue calculations? → A: Credit notes are included in revenue totals and reduce the total (standard accounting practice)
+- Q: What is the comparison base for period-over-period calculations? → A: Same period last year (e.g., Q1 2024 vs Q1 2023) to account for seasonality
+
 ## Assumptions
 
 - Revenue is calculated from finalized sales invoices (not drafts or quotes)
+- Credit notes (negative invoices) are included in revenue calculations and reduce the total
 - Invoice amounts use the base currency of the division
-- Period comparisons use equivalent length periods (e.g., Q1 2024 vs Q1 2023)
+- Period comparisons use same period last year (e.g., Q1 2024 vs Q1 2023) to account for seasonality
 - Project revenue links to invoices via project references in Exact Online
 - Hours data comes from time transactions linked to projects
 
