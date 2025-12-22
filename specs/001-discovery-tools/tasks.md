@@ -140,7 +140,7 @@ financial, project, logistics) with endpoint details.
 - [x] T038 [P] Create README.md with installation, setup, and usage instructions
 - [x] T039 [P] Update CLAUDE.md if needed with any discovered patterns
 - [x] T040 Validate quickstart.md flow works end-to-end
-- [ ] T041 Test with real Exact Online credentials (per Definition of Done)
+- [x] T041 Test with real Exact Online credentials (per Definition of Done)
 - [x] T042 Verify no tokens appear in logs or error messages
 
 ---
