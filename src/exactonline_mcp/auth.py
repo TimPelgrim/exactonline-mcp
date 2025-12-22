@@ -534,6 +534,7 @@ async def run_auth_flow() -> Token:
     client_id = os.getenv("EXACT_ONLINE_CLIENT_ID")
     client_secret = os.getenv("EXACT_ONLINE_CLIENT_SECRET")
     region = os.getenv("EXACT_ONLINE_REGION", "nl")
+    redirect_uri = os.getenv("EXACT_ONLINE_REDIRECT_URI", DEFAULT_REDIRECT_URI)
 
     if not client_id or not client_secret:
         raise ValueError(
@@ -541,23 +542,26 @@ async def run_auth_flow() -> Token:
             "Please set them in .env file."
         )
 
-    oauth_client = OAuth2Client(client_id, client_secret, region)
+    oauth_client = OAuth2Client(client_id, client_secret, region, redirect_uri)
 
     # Reset handler state
     CallbackHandler.authorization_code = None
     CallbackHandler.state = None
     CallbackHandler.error = None
 
-    # Get or create SSL certificate
-    cert_path, key_path = get_or_create_ssl_cert()
+    # Determine if using external tunnel (ngrok, etc.) or localhost
+    is_localhost = "localhost" in redirect_uri or "127.0.0.1" in redirect_uri
 
-    # Create SSL context
-    ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    ssl_context.load_cert_chain(certfile=cert_path, keyfile=key_path)
-
-    # Start HTTPS callback server
+    # Start callback server
     server = HTTPServer(("localhost", 8080), CallbackHandler)
-    server.socket = ssl_context.wrap_socket(server.socket, server_side=True)
+
+    if is_localhost and redirect_uri.startswith("https://"):
+        # Local HTTPS with self-signed certificate
+        cert_path, key_path = get_or_create_ssl_cert()
+        ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ssl_context.load_cert_chain(certfile=cert_path, keyfile=key_path)
+        server.socket = ssl_context.wrap_socket(server.socket, server_side=True)
+
     server_thread = Thread(target=server.handle_request, daemon=True)
     server_thread.start()
 
@@ -565,8 +569,15 @@ async def run_auth_flow() -> Token:
     auth_url, expected_state = oauth_client.get_authorization_url()
     print("\nOpening browser for Exact Online authentication...")
     print(f"If the browser doesn't open, visit: {auth_url}")
-    print("\nNote: Your browser may show a security warning for the self-signed")
-    print("certificate. Click 'Advanced' and 'Proceed to localhost' to continue.\n")
+
+    if is_localhost and redirect_uri.startswith("https://"):
+        print("\nNote: Your browser may show a security warning for the self-signed")
+        print("certificate. Click 'Advanced' and 'Proceed to localhost' to continue.")
+    elif not is_localhost:
+        print(f"\nUsing external callback: {redirect_uri}")
+        print("Make sure your tunnel (e.g., ngrok http 8080) is running!")
+
+    print("")
     webbrowser.open(auth_url)
 
     # Wait for callback
