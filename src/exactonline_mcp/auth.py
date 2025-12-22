@@ -5,13 +5,15 @@ and automatic token refresh for the Exact Online API.
 """
 
 import asyncio
+import ipaddress
 import json
 import logging
 import os
 import secrets
+import ssl
 import webbrowser
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from threading import Thread
@@ -19,7 +21,11 @@ from typing import Any
 from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
+from cryptography import x509
 from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.x509.oid import NameOID
 
 from exactonline_mcp.exceptions import AuthenticationError
 from exactonline_mcp.models import Token
@@ -32,7 +38,7 @@ REGION_URLS = {
     "uk": "https://start.exactonline.co.uk",
 }
 
-DEFAULT_REDIRECT_URI = "http://localhost:8080/callback"
+DEFAULT_REDIRECT_URI = "https://localhost:8080/callback"
 
 
 def get_base_url(region: str = "nl") -> str:
@@ -226,6 +232,77 @@ def get_storage() -> TokenStorage:
     except Exception:
         logger.info("Keyring not available, using encrypted file storage")
         return EncryptedFileStorage()
+
+
+def get_or_create_ssl_cert(storage_dir: Path | None = None) -> tuple[Path, Path]:
+    """Get or create a self-signed SSL certificate for localhost.
+
+    Args:
+        storage_dir: Directory to store certificate files.
+
+    Returns:
+        Tuple of (cert_path, key_path).
+    """
+    if storage_dir is None:
+        storage_dir = Path.home() / ".exactonline_mcp"
+    storage_dir.mkdir(parents=True, exist_ok=True)
+
+    cert_path = storage_dir / "localhost.crt"
+    key_path = storage_dir / "localhost.key"
+
+    # Return existing certificate if still valid
+    if cert_path.exists() and key_path.exists():
+        try:
+            cert_data = cert_path.read_bytes()
+            cert = x509.load_pem_x509_certificate(cert_data)
+            if cert.not_valid_after_utc > datetime.now(cert.not_valid_after_utc.tzinfo):
+                return cert_path, key_path
+        except Exception:
+            pass  # Regenerate if invalid
+
+    # Generate new RSA key
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+    # Generate self-signed certificate
+    subject = issuer = x509.Name([
+        x509.NameAttribute(NameOID.COUNTRY_NAME, "NL"),
+        x509.NameAttribute(NameOID.ORGANIZATION_NAME, "exactonline-mcp"),
+        x509.NameAttribute(NameOID.COMMON_NAME, "localhost"),
+    ])
+
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(issuer)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(datetime.now())
+        .not_valid_after(datetime.now() + timedelta(days=365))
+        .add_extension(
+            x509.SubjectAlternativeName([
+                x509.DNSName("localhost"),
+                x509.IPAddress(ipaddress.IPv4Address("127.0.0.1")),
+            ]),
+            critical=False,
+        )
+        .sign(key, hashes.SHA256())
+    )
+
+    # Save key
+    key_path.write_bytes(
+        key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.TraditionalOpenSSL,
+            encryption_algorithm=serialization.NoEncryption(),
+        )
+    )
+    key_path.chmod(0o600)
+
+    # Save certificate
+    cert_path.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+
+    logger.info(f"Generated self-signed certificate at {cert_path}")
+    return cert_path, key_path
 
 
 class OAuth2Client:
@@ -436,11 +513,12 @@ async def run_auth_flow() -> Token:
     """Run the interactive OAuth2 authentication flow.
 
     This function:
-    1. Starts a local HTTP server for the callback
-    2. Opens the browser to the Exact Online login page
-    3. Waits for the user to authorize
-    4. Exchanges the authorization code for tokens
-    5. Stores the tokens securely
+    1. Generates/loads a self-signed SSL certificate for localhost
+    2. Starts a local HTTPS server for the callback
+    3. Opens the browser to the Exact Online login page
+    4. Waits for the user to authorize
+    5. Exchanges the authorization code for tokens
+    6. Stores the tokens securely
 
     Returns:
         Token with access and refresh tokens.
@@ -470,15 +548,25 @@ async def run_auth_flow() -> Token:
     CallbackHandler.state = None
     CallbackHandler.error = None
 
-    # Start callback server
+    # Get or create SSL certificate
+    cert_path, key_path = get_or_create_ssl_cert()
+
+    # Create SSL context
+    ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ssl_context.load_cert_chain(certfile=cert_path, keyfile=key_path)
+
+    # Start HTTPS callback server
     server = HTTPServer(("localhost", 8080), CallbackHandler)
+    server.socket = ssl_context.wrap_socket(server.socket, server_side=True)
     server_thread = Thread(target=server.handle_request, daemon=True)
     server_thread.start()
 
     # Open browser for authorization
     auth_url, expected_state = oauth_client.get_authorization_url()
     print("\nOpening browser for Exact Online authentication...")
-    print(f"If the browser doesn't open, visit: {auth_url}\n")
+    print(f"If the browser doesn't open, visit: {auth_url}")
+    print("\nNote: Your browser may show a security warning for the self-signed")
+    print("certificate. Click 'Advanced' and 'Proceed to localhost' to continue.\n")
     webbrowser.open(auth_url)
 
     # Wait for callback

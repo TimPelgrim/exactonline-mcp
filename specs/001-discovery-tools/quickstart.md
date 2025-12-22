@@ -7,7 +7,7 @@
 3. **Exact Online developer account** with:
    - Client ID (OAuth2 app)
    - Client Secret
-   - Redirect URI configured: `http://localhost:8080/callback`
+   - Redirect URI configured: `https://localhost:8080/callback`
 
 ## Setup
 
@@ -43,9 +43,13 @@ uv run python -m exactonline_mcp.auth
 ```
 
 This will:
-1. Open your browser to Exact Online login
-2. After you authorize, capture the callback
-3. Store tokens securely in your system keyring
+1. Generate a self-signed SSL certificate for localhost (first run only)
+2. Open your browser to Exact Online login
+3. After you authorize, capture the HTTPS callback
+4. Store tokens securely in your system keyring
+
+**Note**: Your browser may show a security warning for the self-signed certificate.
+Click "Advanced" and "Proceed to localhost" to continue.
 
 ## Usage with Claude Desktop
 
@@ -138,6 +142,12 @@ Claude: [Uses list_endpoints with category "financial"]
 
 ## Troubleshooting
 
+### Browser shows "Your connection is not private"
+
+This is expected! The auth flow uses a self-signed certificate. Click:
+1. "Advanced" (or "Show Details")
+2. "Proceed to localhost (unsafe)" or "visit this website"
+
 ### "Authentication required" error
 
 Run the auth command again:
@@ -160,7 +170,10 @@ Wait 60 seconds before retrying. The API allows 60 calls per minute.
 ### Token storage issues
 
 If keyring is unavailable, tokens are stored encrypted in:
-`~/.exactonline_mcp/tokens.json`
+`~/.exactonline_mcp/tokens.json.enc`
+
+SSL certificate is stored in:
+`~/.exactonline_mcp/localhost.crt`
 
 ## Next Steps
 

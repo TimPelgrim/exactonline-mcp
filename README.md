@@ -16,7 +16,14 @@ Before using the server, authenticate with Exact Online:
 uv run python -m exactonline_mcp.auth
 ```
 
-This will open a browser window for OAuth2 authentication and store tokens securely.
+This will:
+1. Generate a self-signed SSL certificate for localhost (first run only)
+2. Open a browser window for OAuth2 authentication
+3. Store tokens securely in your system keyring
+
+**Note**: Your browser may show a security warning for the self-signed certificate. Click "Advanced" and "Proceed to localhost" to continue.
+
+**Exact Online App Setup**: Register your app with redirect URI `https://localhost:8080/callback`
 
 ## Configuration
 
