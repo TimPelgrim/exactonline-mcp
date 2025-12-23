@@ -93,4 +93,26 @@ uv run ruff check .
 - Account type codes: 10=Kas, 12=Bank, 20=Debiteuren, 40=Crediteuren, 110=Omzet, 121=Bedrijfskosten
 - Aging reports from `read/financial/AgingReceivablesList` and `AgingPayablesList`
 - Transaction drill-down from `financialtransaction/TransactionLines` - filter by GLAccount GUID
+
+## Costs by Period (No CostList Endpoint)
+
+**Important**: Unlike `read/financial/RevenueList` and `RevenueListByYear`, there is NO dedicated `CostList` or `CostListByYear` endpoint in the Exact Online API. The `ProfitLossOverview` only provides costs for the current period and yearly totals.
+
+**To get costs by period**, use `financial/ReportingBalance` with these filters:
+```
+Filter: ReportingYear eq {year} and ReportingPeriod eq {period} and BalanceType eq 'W' and Amount gt 0
+Select: GLAccountCode,GLAccountDescription,Amount,ReportingPeriod
+```
+
+**Key points:**
+- `BalanceType eq 'W'` = P/L accounts only (Winst/Verlies)
+- `Amount gt 0` = Cost accounts (debit balances = positive)
+- Revenue accounts have negative amounts (credit = negative in Dutch accounting)
+- Cost account codes: 4xxx (operating expenses), 5xxx (personnel), 85xx (purchases/COGS)
+- Revenue account codes: 8000-8009 (Omzet)
+
+**Example - Q3 costs query:**
+```
+financial/ReportingBalance?$filter=ReportingYear eq 2024 and ReportingPeriod ge 7 and ReportingPeriod le 9 and BalanceType eq 'W' and Amount gt 0&$select=GLAccountCode,GLAccountDescription,Amount,ReportingPeriod
+```
 <!-- MANUAL ADDITIONS END -->
