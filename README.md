@@ -66,6 +66,32 @@ EXACT_ONLINE_REGION=nl
 
 Replace with your actual credentials (see next section).
 
+## Updating
+
+To get the latest version:
+
+```bash
+cd exactonline-mcp
+git pull origin main
+uv sync
+```
+
+After updating, restart Claude Desktop to pick up changes.
+
+### Check your version
+
+```bash
+git describe --tags --always
+```
+
+### View changelog
+
+See what changed between versions:
+
+```bash
+git log --oneline v0.1.0..HEAD
+```
+
 ## Exact Online App Setup
 
 To get your API credentials:
