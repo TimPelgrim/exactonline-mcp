@@ -10,6 +10,21 @@ A Model Context Protocol (MCP) server providing read-only access to Exact Online
 - **Aging reports** - outstanding receivables and payables
 - **Discovery tools** - explore any Exact Online API endpoint
 
+## Security Considerations
+
+**This MCP server is read-only by design.** It only performs GET requests to the Exact Online API, so it cannot modify, delete, or corrupt your accounting data.
+
+However, be aware that:
+
+- **Data exposure risk**: Your financial data (revenue, customer names, account balances, invoices) is accessible to the LLM. If you use other MCP tools that can send data externally (email, webhooks, file uploads), sensitive information could potentially be leaked.
+- **LLM guardrails vary**: Claude has strong guardrails, but other LLMs or custom configurations may not. Be cautious when using this MCP with less restricted models.
+- **Conversation history**: Your queries and the returned financial data may be stored in conversation logs depending on your LLM provider's data retention policies.
+
+**Recommendations**:
+- Only enable this MCP server when you need it
+- Review what other MCP tools are active in your configuration
+- Be mindful of what financial data you query in shared or logged environments
+
 ## Prerequisites
 
 Before you begin, ensure you have:
