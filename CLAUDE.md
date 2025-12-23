@@ -115,4 +115,31 @@ Select: GLAccountCode,GLAccountDescription,Amount,ReportingPeriod
 ```
 financial/ReportingBalance?$filter=ReportingYear eq 2024 and ReportingPeriod ge 7 and ReportingPeriod le 9 and BalanceType eq 'W' and Amount gt 0&$select=GLAccountCode,GLAccountDescription,Amount,ReportingPeriod
 ```
+
+## Future Feature Ideas
+
+### Open Receivables Tool (cashflow/Receivables)
+
+**Endpoint**: `cashflow/Receivables`
+
+**Use case**: Show detailed open invoices per customer with payment status, due dates, and aging.
+
+**Key fields**:
+- `AccountCode/AccountName` - Customer details
+- `InvoiceNumber`, `InvoiceDate`, `DueDate` - Invoice info
+- `TransactionAmountDC` - Original invoice amount
+- `AmountDC` - Remaining open amount (negative = receivable, positive = credit note)
+- `IsFullyPaid` - Payment status flag
+- `PaymentConditionDescription` - Payment terms
+
+**Filters**:
+- `IsFullyPaid eq false` - Only open items
+- Can filter by account, due date, etc.
+
+**Difference from AgingReceivablesList**: This endpoint shows individual invoice lines with full details, while AgingReceivablesList shows bucketed totals (0-30, 31-60, etc.) per customer.
+
+**Potential tools**:
+- `get_open_receivables` - List open invoices with filtering options
+- `get_customer_open_items` - Open items for a specific customer
+- `get_overdue_receivables` - Filter by DueDate < today
 <!-- MANUAL ADDITIONS END -->
