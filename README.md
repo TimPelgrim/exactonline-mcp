@@ -1,45 +1,107 @@
 # exactonline-mcp
 
-A Model Context Protocol (MCP) server providing read-only access to Exact Online accounting data.
+A Model Context Protocol (MCP) server providing read-only access to Exact Online accounting data. Query your financial data, revenue reports, and account balances directly from Claude.
+
+## Features
+
+- **13 tools** for querying Exact Online data
+- **Revenue analysis** - by period, customer, or project with year-over-year comparison
+- **Financial reporting** - P&L overview, balance sheet, GL account balances
+- **Aging reports** - outstanding receivables and payables
+- **Discovery tools** - explore any Exact Online API endpoint
+
+## Prerequisites
+
+Before you begin, ensure you have:
+
+- **Python 3.11 or higher** - Check with `python --version`
+- **uv package manager** - [Installation guide](https://docs.astral.sh/uv/getting-started/installation/)
+- **Exact Online account** with API access enabled
+- **ngrok account** (free) - [Sign up at ngrok.com](https://ngrok.com/)
 
 ## Installation
 
+### 1. Install uv (if not already installed)
+
 ```bash
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows (PowerShell)
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+### 2. Clone and install
+
+```bash
+git clone https://github.com/TimPelgrim/exactonline-mcp.git
+cd exactonline-mcp
 uv sync
 ```
 
-## Authentication
+### 3. Create configuration file
 
-Before using the server, authenticate with Exact Online:
-
-```bash
-uv run python -m exactonline_mcp.auth
-```
-
-This will:
-1. Generate a self-signed SSL certificate for localhost (first run only)
-2. Open a browser window for OAuth2 authentication
-3. Store tokens securely in your system keyring
-
-**Note**: Your browser may show a security warning for the self-signed certificate. Click "Advanced" and "Proceed to localhost" to continue.
-
-**Exact Online App Setup**: Register your app with redirect URI `https://localhost:8080/callback`
-
-## Configuration
-
-Create a `.env` file with your Exact Online app credentials:
+Create a `.env` file in the project root:
 
 ```env
 EXACT_ONLINE_CLIENT_ID=your_client_id
 EXACT_ONLINE_CLIENT_SECRET=your_client_secret
-EXACT_ONLINE_REGION=nl  # or 'uk'
+EXACT_ONLINE_REGION=nl
 ```
 
-## Usage
+Replace with your actual credentials (see next section).
 
-### As MCP Server
+## Exact Online App Setup
 
-Add to your Claude config:
+To get your API credentials:
+
+1. Go to the [Exact Online App Center](https://apps.exactonline.com/)
+2. Sign in with your Exact Online account
+3. Click **"Manage my apps"** → **"Add a new application"**
+4. Fill in the app details:
+   - **Name**: e.g., "MCP Server"
+   - **Redirect URI**: Your ngrok URL + `/callback` (see Authentication section)
+5. After creating the app, copy the **Client ID** and **Client Secret** to your `.env` file
+
+## Authentication
+
+### Why ngrok?
+
+Exact Online requires a publicly accessible HTTPS URL for the OAuth callback. They reject `localhost` URLs, so we use ngrok to create a secure tunnel.
+
+### Setup ngrok
+
+1. Install ngrok: `brew install ngrok` (macOS) or [download](https://ngrok.com/download)
+2. Authenticate: `ngrok config add-authtoken YOUR_TOKEN` (get token from ngrok dashboard)
+3. Start the tunnel:
+
+```bash
+ngrok http 8080
+```
+
+4. Copy the HTTPS URL (e.g., `https://abc123.ngrok.io`)
+
+### Configure redirect URI
+
+1. Go back to your Exact Online app settings
+2. Update the **Redirect URI** to: `https://YOUR-NGROK-URL/callback`
+
+### Run authentication
+
+With ngrok running in a separate terminal:
+
+```bash
+EXACT_ONLINE_REDIRECT_URI=https://YOUR-NGROK-URL/callback uv run python -m exactonline_mcp.auth
+```
+
+This will:
+1. Open your browser for Exact Online login
+2. Request permission to access your data
+3. Store tokens securely in your system keyring
+
+## Usage with Claude Desktop
+
+Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
 
 ```json
 {
@@ -57,26 +119,34 @@ Add to your Claude config:
 }
 ```
 
+Replace `/path/to/exactonline-mcp` with the actual path to your installation.
+
 ## Available Tools
 
 ### Discovery Tools
-- **list_divisions** - List accessible Exact Online divisions
-- **explore_endpoint** - Explore any API endpoint with sample data
-- **list_endpoints** - Browse known API endpoints by category
+| Tool | Description |
+|------|-------------|
+| `list_divisions` | List accessible Exact Online divisions (administraties) |
+| `explore_endpoint` | Explore any API endpoint with sample data |
+| `list_endpoints` | Browse known API endpoints by category |
 
 ### Revenue Tools
-- **get_revenue_by_period** - Revenue totals by month/quarter/year with year-over-year comparison
-- **get_revenue_by_customer** - Customer revenue rankings with invoice counts
-- **get_revenue_by_project** - Project-based revenue with optional hours tracking
+| Tool | Description |
+|------|-------------|
+| `get_revenue_by_period` | Revenue totals by month/quarter/year with year-over-year comparison |
+| `get_revenue_by_customer` | Customer revenue rankings with invoice counts |
+| `get_revenue_by_project` | Project-based revenue with optional hours tracking |
 
 ### Financial Reporting Tools
-- **get_profit_loss_overview** - P&L summary with year-over-year comparison
-- **get_gl_account_balance** - Balance for a specific GL account (grootboekrekening)
-- **get_balance_sheet_summary** - Balance sheet totals by category (assets, liabilities, equity)
-- **list_gl_account_balances** - List accounts with balances, filterable by type
-- **get_aging_receivables** - Outstanding customer invoices by age (0-30, 31-60, 61-90, >90 days)
-- **get_aging_payables** - Outstanding supplier invoices by age
-- **get_gl_account_transactions** - Drill down into individual transactions for an account
+| Tool | Description |
+|------|-------------|
+| `get_profit_loss_overview` | P&L summary with year-over-year comparison |
+| `get_gl_account_balance` | Balance for a specific GL account (grootboekrekening) |
+| `get_balance_sheet_summary` | Balance sheet totals by category (assets, liabilities, equity) |
+| `list_gl_account_balances` | List accounts with balances, filterable by type |
+| `get_aging_receivables` | Outstanding customer invoices by age (0-30, 31-60, 61-90, >90 days) |
+| `get_aging_payables` | Outstanding supplier invoices by age |
+| `get_gl_account_transactions` | Drill down into individual transactions for an account |
 
 ## Example Prompts
 
@@ -92,6 +162,44 @@ Add to your Claude config:
 "Show aging receivables - who owes us money?"
 "What transactions were made to account 8000 this year?"
 ```
+
+## Troubleshooting
+
+### "Division not accessible"
+
+This error means the API endpoint requires a module that's not enabled for your Exact Online subscription. For example, `project/Projects` requires the Project module.
+
+**Solution**: Use `list_divisions` to see which divisions you have access to, and check your Exact Online subscription for available modules.
+
+### Authentication failed / Token expired
+
+Tokens expire after 30 days of inactivity.
+
+**Solution**: Re-run the authentication flow:
+```bash
+EXACT_ONLINE_REDIRECT_URI=https://YOUR-NGROK-URL/callback uv run python -m exactonline_mcp.auth
+```
+
+### ngrok tunnel errors
+
+Common issues:
+- **Tunnel not running**: Make sure ngrok is running in a separate terminal
+- **URL changed**: ngrok free tier gives a new URL each session - update your redirect URI
+- **Rate limited**: Wait a few minutes and try again
+
+**Solution**: Restart ngrok and update the redirect URI in both Exact Online app settings and your auth command.
+
+### Rate limit errors
+
+Exact Online limits API calls to 60 per minute.
+
+**Solution**: The server has built-in retry logic. If you see rate limit errors, wait a minute and try again.
+
+### "Please add a $select or $top=1 statement"
+
+Some Exact Online endpoints require explicit field selection.
+
+**Solution**: Use the `select` parameter when calling `explore_endpoint`, or use the dedicated tools which handle this automatically.
 
 ## License
 
