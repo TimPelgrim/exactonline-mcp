@@ -1,4 +1,4 @@
-"""MCP server for Exact Online API discovery and revenue tools.
+"""MCP server for Exact Online API discovery, revenue, and financial reporting tools.
 
 This module defines the FastMCP server instance and the tools:
 - list_divisions: List accessible Exact Online divisions
@@ -7,6 +7,13 @@ This module defines the FastMCP server instance and the tools:
 - get_revenue_by_period: Revenue totals by time period with YoY comparison
 - get_revenue_by_customer: Customer revenue rankings
 - get_revenue_by_project: Project-based revenue with hours
+- get_profit_loss_overview: P&L summary with year-over-year comparison
+- get_gl_account_balance: Balance for a specific GL account
+- get_balance_sheet_summary: Balance sheet totals by category
+- list_gl_account_balances: List accounts with balances, filterable
+- get_aging_receivables: Outstanding customer invoices by age
+- get_aging_payables: Outstanding supplier invoices by age
+- get_gl_account_transactions: Drill down into individual transactions
 """
 
 import logging
@@ -607,6 +614,593 @@ async def get_revenue_by_project(
 
     except ExactOnlineError as e:
         logger.error(f"Error getting revenue by project: {e.message}")
+        return e.to_dict()
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        return {"error": str(e), "action": "Check server logs for details"}
+
+
+# =============================================================================
+# Financial Reporting Tools (Feature 001-balance-sheet-financial)
+# =============================================================================
+
+
+@mcp.tool()
+async def get_profit_loss_overview(
+    division: int | None = None,
+) -> dict[str, Any]:
+    """Get profit and loss overview with year-over-year comparison.
+
+    Returns revenue, costs, and result for current year vs previous year.
+    Also includes current period breakdown.
+
+    Args:
+        division: Division code. If not specified, uses current division.
+
+    Returns:
+        Dictionary with P&L data including year-over-year comparison.
+
+    Example:
+        >>> await get_profit_loss_overview()
+        {
+            "division": 1913290,
+            "current_year": 2025,
+            "previous_year": 2024,
+            "currency_code": "EUR",
+            "revenue_current_year": 971192.32,
+            "revenue_previous_year": 942635.79,
+            "costs_current_year": 835096.97,
+            "costs_previous_year": 931079.75,
+            "result_current_year": 136095.35,
+            "result_previous_year": 11556.04
+        }
+    """
+    try:
+        client = get_client()
+
+        # Get division if not specified
+        if division is None:
+            division = await client.get_current_division()
+
+        overview = await client.fetch_profit_loss_overview(division)
+        return overview.to_dict()
+
+    except ExactOnlineError as e:
+        logger.error(f"Error getting P&L overview: {e.message}")
+        return e.to_dict()
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        return {"error": str(e), "action": "Check server logs for details"}
+
+
+@mcp.tool()
+async def get_gl_account_balance(
+    account_code: str,
+    year: int | None = None,
+    period: int | None = None,
+    division: int | None = None,
+) -> dict[str, Any]:
+    """Get the balance for a specific general ledger account (grootboekrekening).
+
+    Returns amount, debit, credit for the specified period.
+
+    Args:
+        account_code: GL account code (e.g., '1300' for Debiteuren, '8000' for Omzet).
+        year: Fiscal year. Defaults to current year.
+        period: Reporting period (1-12). Defaults to current period.
+        division: Division code. If not specified, uses current division.
+
+    Returns:
+        Dictionary with account balance information.
+
+    Example:
+        >>> await get_gl_account_balance("1300")
+        {
+            "gl_account_code": "1300",
+            "gl_account_description": "Debiteuren",
+            "amount": 138301.82,
+            "amount_debit": 138301.82,
+            "amount_credit": 0,
+            "balance_type": "B",
+            "account_type": 20,
+            "account_type_description": "Accounts receivable",
+            "reporting_year": 2024,
+            "reporting_period": 12
+        }
+    """
+    # Validate period if provided
+    if period is not None and (period < 1 or period > 12):
+        return {
+            "error": "invalid_period",
+            "message": f"Period must be between 1 and 12, got {period}",
+            "action": "Provide a valid period number (1-12)",
+        }
+
+    try:
+        client = get_client()
+
+        # Get division if not specified
+        if division is None:
+            division = await client.get_current_division()
+
+        # Look up GL account by code
+        gl_account = await client.fetch_gl_account_by_code(division, account_code)
+        if not gl_account:
+            return {
+                "error": "account_not_found",
+                "message": f"GL account with code '{account_code}' not found",
+                "action": "Verify the account code exists in this division",
+            }
+
+        gl_account_id = gl_account.get("ID")
+
+        # Fetch reporting balance
+        balance = await client.fetch_reporting_balance(
+            division, gl_account_id, year=year, period=period
+        )
+
+        if not balance:
+            return {
+                "error": "no_balance_data",
+                "message": f"No balance data found for account '{account_code}'",
+                "action": "Check if the account has any transactions in the specified period",
+                "gl_account_code": account_code,
+                "gl_account_description": gl_account.get("Description", ""),
+            }
+
+        return {
+            "gl_account_code": balance.get("GLAccountCode", account_code),
+            "gl_account_description": balance.get("GLAccountDescription", ""),
+            "amount": float(balance.get("Amount", 0) or 0),
+            "amount_debit": float(balance.get("AmountDebit", 0) or 0),
+            "amount_credit": float(balance.get("AmountCredit", 0) or 0),
+            "balance_type": balance.get("BalanceType", ""),
+            "account_type": balance.get("Type", 0),
+            "account_type_description": balance.get("TypeDescription", ""),
+            "reporting_year": balance.get("ReportingYear", 0),
+            "reporting_period": balance.get("ReportingPeriod", 0),
+        }
+
+    except ExactOnlineError as e:
+        logger.error(f"Error getting GL account balance: {e.message}")
+        return e.to_dict()
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        return {"error": str(e), "action": "Check server logs for details"}
+
+
+@mcp.tool()
+async def get_balance_sheet_summary(
+    year: int | None = None,
+    period: int | None = None,
+    division: int | None = None,
+) -> dict[str, Any]:
+    """Get balance sheet summary with assets, liabilities, and equity totals.
+
+    Returns categorized totals grouped by account type.
+
+    Args:
+        year: Fiscal year. Defaults to current year.
+        period: Reporting period (1-12). Defaults to current period.
+        division: Division code. If not specified, uses current division.
+
+    Returns:
+        Dictionary with balance sheet categories and totals.
+
+    Example:
+        >>> await get_balance_sheet_summary()
+        {
+            "division": 1913290,
+            "reporting_year": 2024,
+            "reporting_period": 12,
+            "currency_code": "EUR",
+            "total_assets": 250000.00,
+            "total_liabilities": 180000.00,
+            "total_equity": 70000.00,
+            "assets": [
+                {"name": "Bank", "amount": 50000.00, "account_count": 3}
+            ],
+            "liabilities": [...],
+            "equity": [...]
+        }
+    """
+    # Validate period if provided
+    if period is not None and (period < 1 or period > 12):
+        return {
+            "error": "invalid_period",
+            "message": f"Period must be between 1 and 12, got {period}",
+            "action": "Provide a valid period number (1-12)",
+        }
+
+    try:
+        client = get_client()
+
+        # Get division if not specified
+        if division is None:
+            division = await client.get_current_division()
+
+        # Fetch all balance sheet balances
+        balances = await client.fetch_all_balance_sheet_balances(
+            division, year=year, period=period
+        )
+
+        if not balances:
+            # Return empty summary with zeros
+            from datetime import datetime as dt
+            return {
+                "division": division,
+                "reporting_year": year or dt.now().year,
+                "reporting_period": period or 1,
+                "currency_code": "EUR",
+                "total_assets": 0.0,
+                "total_liabilities": 0.0,
+                "total_equity": 0.0,
+                "assets": [],
+                "liabilities": [],
+                "equity": [],
+            }
+
+        # Determine actual year/period from data
+        actual_year = balances[0].get("ReportingYear", year or date.today().year)
+        actual_period = balances[0].get("ReportingPeriod", period or 1)
+
+        # Aggregate by category
+        summary = client.aggregate_balances_by_category(
+            balances, division, actual_year, actual_period
+        )
+
+        return summary.to_dict()
+
+    except ExactOnlineError as e:
+        logger.error(f"Error getting balance sheet summary: {e.message}")
+        return e.to_dict()
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        return {"error": str(e), "action": "Check server logs for details"}
+
+
+@mcp.tool()
+async def list_gl_account_balances(
+    balance_type: str | None = None,
+    account_type: int | None = None,
+    year: int | None = None,
+    period: int | None = None,
+    division: int | None = None,
+) -> dict[str, Any]:
+    """List all GL accounts with their balances, filterable by balance type or account type.
+
+    Args:
+        balance_type: Filter by balance type: 'B' for balance sheet, 'W' for P&L.
+        account_type: Filter by account type code (e.g., 20 for receivables, 110 for revenue).
+        year: Fiscal year. Defaults to current year.
+        period: Reporting period (1-12). Defaults to current period.
+        division: Division code. If not specified, uses current division.
+
+    Returns:
+        Dictionary with account list and totals.
+
+    Example:
+        >>> await list_gl_account_balances(balance_type="W")
+        {
+            "division": 1913290,
+            "reporting_year": 2024,
+            "reporting_period": 12,
+            "total_accounts": 15,
+            "accounts": [
+                {
+                    "gl_account_code": "8000",
+                    "gl_account_description": "Omzet",
+                    "amount": -86852.50,
+                    "balance_type": "W",
+                    "account_type": 110
+                }
+            ]
+        }
+    """
+    # Validate balance_type if provided
+    if balance_type is not None and balance_type not in ("B", "W"):
+        return {
+            "error": "invalid_balance_type",
+            "message": f"balance_type must be 'B' or 'W', got '{balance_type}'",
+            "action": "Use 'B' for balance sheet or 'W' for profit/loss accounts",
+        }
+
+    # Validate period if provided
+    if period is not None and (period < 1 or period > 12):
+        return {
+            "error": "invalid_period",
+            "message": f"Period must be between 1 and 12, got {period}",
+            "action": "Provide a valid period number (1-12)",
+        }
+
+    try:
+        client = get_client()
+
+        # Get division if not specified
+        if division is None:
+            division = await client.get_current_division()
+
+        # Fetch filtered balances
+        accounts = await client.fetch_filtered_balances(
+            division,
+            balance_type=balance_type,
+            account_type=account_type,
+            year=year,
+            period=period,
+        )
+
+        # Determine year/period from data or defaults
+        actual_year = accounts[0].reporting_year if accounts else (year or date.today().year)
+        actual_period = accounts[0].reporting_period if accounts else (period or 1)
+
+        return {
+            "division": division,
+            "reporting_year": actual_year,
+            "reporting_period": actual_period,
+            "total_accounts": len(accounts),
+            "accounts": [a.to_dict() for a in accounts],
+        }
+
+    except ExactOnlineError as e:
+        logger.error(f"Error listing GL account balances: {e.message}")
+        return e.to_dict()
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        return {"error": str(e), "action": "Check server logs for details"}
+
+
+@mcp.tool()
+async def get_aging_receivables(
+    division: int | None = None,
+) -> dict[str, Any]:
+    """Get aging report for outstanding receivables (debiteuren).
+
+    Shows amounts by aging bucket (0-30, 31-60, 61-90, >90 days).
+
+    Args:
+        division: Division code. If not specified, uses current division.
+
+    Returns:
+        Dictionary with aging totals and customer breakdown.
+
+    Example:
+        >>> await get_aging_receivables()
+        {
+            "division": 1913290,
+            "currency_code": "EUR",
+            "total_outstanding": 122603.26,
+            "total_0_30": 108189.08,
+            "total_31_60": 13213.20,
+            "total_61_90": 0,
+            "total_over_90": 1206.98,
+            "customer_count": 5,
+            "customers": [...]
+        }
+    """
+    try:
+        client = get_client()
+
+        # Get division if not specified
+        if division is None:
+            division = await client.get_current_division()
+
+        # Fetch aging receivables
+        entries = await client.fetch_aging_receivables(division)
+
+        # Calculate totals
+        total_outstanding = sum(e.total_amount for e in entries)
+        total_0_30 = sum(e.age_0_30 for e in entries)
+        total_31_60 = sum(e.age_31_60 for e in entries)
+        total_61_90 = sum(e.age_61_90 for e in entries)
+        total_over_90 = sum(e.age_over_90 for e in entries)
+
+        # Get currency from first entry or default
+        currency_code = entries[0].currency_code if entries else "EUR"
+
+        return {
+            "division": division,
+            "currency_code": currency_code,
+            "total_outstanding": round(total_outstanding, 2),
+            "total_0_30": round(total_0_30, 2),
+            "total_31_60": round(total_31_60, 2),
+            "total_61_90": round(total_61_90, 2),
+            "total_over_90": round(total_over_90, 2),
+            "customer_count": len(entries),
+            "customers": [e.to_dict() for e in entries],
+        }
+
+    except ExactOnlineError as e:
+        logger.error(f"Error getting aging receivables: {e.message}")
+        return e.to_dict()
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        return {"error": str(e), "action": "Check server logs for details"}
+
+
+@mcp.tool()
+async def get_aging_payables(
+    division: int | None = None,
+) -> dict[str, Any]:
+    """Get aging report for outstanding payables (crediteuren).
+
+    Shows amounts by aging bucket (0-30, 31-60, 61-90, >90 days).
+
+    Args:
+        division: Division code. If not specified, uses current division.
+
+    Returns:
+        Dictionary with aging totals and supplier breakdown.
+
+    Example:
+        >>> await get_aging_payables()
+        {
+            "division": 1913290,
+            "currency_code": "EUR",
+            "total_outstanding": 30876.27,
+            "total_0_30": 25000.00,
+            "total_31_60": 5876.27,
+            "total_61_90": 0,
+            "total_over_90": 0,
+            "supplier_count": 3,
+            "suppliers": [...]
+        }
+    """
+    try:
+        client = get_client()
+
+        # Get division if not specified
+        if division is None:
+            division = await client.get_current_division()
+
+        # Fetch aging payables
+        entries = await client.fetch_aging_payables(division)
+
+        # Calculate totals
+        total_outstanding = sum(e.total_amount for e in entries)
+        total_0_30 = sum(e.age_0_30 for e in entries)
+        total_31_60 = sum(e.age_31_60 for e in entries)
+        total_61_90 = sum(e.age_61_90 for e in entries)
+        total_over_90 = sum(e.age_over_90 for e in entries)
+
+        # Get currency from first entry or default
+        currency_code = entries[0].currency_code if entries else "EUR"
+
+        return {
+            "division": division,
+            "currency_code": currency_code,
+            "total_outstanding": round(total_outstanding, 2),
+            "total_0_30": round(total_0_30, 2),
+            "total_31_60": round(total_31_60, 2),
+            "total_61_90": round(total_61_90, 2),
+            "total_over_90": round(total_over_90, 2),
+            "supplier_count": len(entries),
+            "suppliers": [e.to_dict() for e in entries],
+        }
+
+    except ExactOnlineError as e:
+        logger.error(f"Error getting aging payables: {e.message}")
+        return e.to_dict()
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        return {"error": str(e), "action": "Check server logs for details"}
+
+
+@mcp.tool()
+async def get_gl_account_transactions(
+    account_code: str,
+    year: int | None = None,
+    period: int | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    limit: int = 100,
+    division: int | None = None,
+) -> dict[str, Any]:
+    """Get individual transactions for a specific GL account.
+
+    Enables drill-down from account balance to transaction detail.
+
+    Args:
+        account_code: GL account code (e.g., '1300' for Debiteuren, '8000' for Omzet).
+        year: Fiscal year filter. If not specified with period, uses date range or returns recent.
+        period: Reporting period (1-12). Used with year parameter.
+        start_date: Start date filter (YYYY-MM-DD). Alternative to year/period filtering.
+        end_date: End date filter (YYYY-MM-DD). Used with start_date.
+        limit: Maximum number of transactions to return (default 100, max 1000).
+        division: Division code. If not specified, uses current division.
+
+    Returns:
+        Dictionary with account info and transaction list.
+
+    Example:
+        >>> await get_gl_account_transactions("1300", limit=50)
+        {
+            "division": 1913290,
+            "gl_account_code": "1300",
+            "gl_account_description": "Debiteuren",
+            "total_transactions": 50,
+            "transactions": [
+                {
+                    "id": "...",
+                    "date": "2024-12-15",
+                    "description": "Invoice #123",
+                    "amount": 1500.00,
+                    "entry_number": 2050294
+                }
+            ]
+        }
+    """
+    # Validate limit
+    if limit < 1:
+        limit = 1
+    elif limit > 1000:
+        limit = 1000
+
+    # Validate period if provided
+    if period is not None and (period < 1 or period > 12):
+        return {
+            "error": "invalid_period",
+            "message": f"Period must be between 1 and 12, got {period}",
+            "action": "Provide a valid period number (1-12)",
+        }
+
+    # Validate date range if provided
+    if start_date and end_date:
+        try:
+            start = date.fromisoformat(start_date)
+            end = date.fromisoformat(end_date)
+            if start > end:
+                return {
+                    "error": "invalid_date_range",
+                    "message": "start_date must be before or equal to end_date",
+                    "action": "Provide valid date range in ISO format",
+                }
+        except ValueError as e:
+            return {
+                "error": "invalid_date_format",
+                "message": f"Invalid date format: {e}",
+                "action": "Use ISO format: YYYY-MM-DD",
+            }
+
+    try:
+        client = get_client()
+
+        # Get division if not specified
+        if division is None:
+            division = await client.get_current_division()
+
+        # Look up GL account by code
+        gl_account = await client.fetch_gl_account_by_code(division, account_code)
+        if not gl_account:
+            return {
+                "error": "account_not_found",
+                "message": f"GL account with code '{account_code}' not found",
+                "action": "Verify the account code exists in this division",
+            }
+
+        gl_account_id = gl_account.get("ID")
+        gl_account_description = gl_account.get("Description", "")
+
+        # Fetch transaction lines
+        transactions = await client.fetch_transaction_lines(
+            division,
+            gl_account_id,
+            year=year,
+            period=period,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+        )
+
+        return {
+            "division": division,
+            "gl_account_code": account_code,
+            "gl_account_description": gl_account_description,
+            "total_transactions": len(transactions),
+            "transactions": [t.to_dict() for t in transactions],
+        }
+
+    except ExactOnlineError as e:
+        logger.error(f"Error getting GL account transactions: {e.message}")
         return e.to_dict()
     except Exception as e:
         logger.error(f"Unexpected error: {e}")

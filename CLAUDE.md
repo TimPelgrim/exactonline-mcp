@@ -64,6 +64,7 @@ uv run ruff check .
 
 ## Recent Changes
 
+- 001-balance-sheet-financial: Financial reporting tools (get_profit_loss_overview, get_gl_account_balance, get_balance_sheet_summary, list_gl_account_balances, get_aging_receivables, get_aging_payables, get_gl_account_transactions)
 - 002-revenue-tools: Revenue analysis tools (get_revenue_by_period, get_revenue_by_customer, get_revenue_by_project)
 - 001-discovery-tools: Initial MCP server with discovery tools
 
@@ -83,4 +84,13 @@ uv run ruff check .
 - Project field is on SalesInvoiceLines, not SalesInvoices
 - TimeTransactions.Quantity = hours (when linked to time-based Item)
 - Year-over-year comparison: same period last year (Q1 2024 vs Q1 2023)
+
+## Financial Reporting API Notes
+
+- P&L overview from `read/financial/ProfitLossOverview` - returns current vs previous year
+- GL account balances from `financial/ReportingBalance` - filter by GLAccountID, year, period
+- Account types: BalanceType "B" (balance sheet) vs "W" (profit/loss)
+- Account type codes: 10=Kas, 12=Bank, 20=Debiteuren, 40=Crediteuren, 110=Omzet, 121=Bedrijfskosten
+- Aging reports from `read/financial/AgingReceivablesList` and `AgingPayablesList`
+- Transaction drill-down from `financialtransaction/TransactionLines` - filter by GLAccount GUID
 <!-- MANUAL ADDITIONS END -->

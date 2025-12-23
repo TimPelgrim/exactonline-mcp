@@ -69,6 +69,15 @@ Add to your Claude config:
 - **get_revenue_by_customer** - Customer revenue rankings with invoice counts
 - **get_revenue_by_project** - Project-based revenue with optional hours tracking
 
+### Financial Reporting Tools
+- **get_profit_loss_overview** - P&L summary with year-over-year comparison
+- **get_gl_account_balance** - Balance for a specific GL account (grootboekrekening)
+- **get_balance_sheet_summary** - Balance sheet totals by category (assets, liabilities, equity)
+- **list_gl_account_balances** - List accounts with balances, filterable by type
+- **get_aging_receivables** - Outstanding customer invoices by age (0-30, 31-60, 61-90, >90 days)
+- **get_aging_payables** - Outstanding supplier invoices by age
+- **get_gl_account_transactions** - Drill down into individual transactions for an account
+
 ## Example Prompts
 
 ```
@@ -76,6 +85,12 @@ Add to your Claude config:
 "Who are our top 5 customers?"
 "What's the revenue per project this year?"
 "Compare Q1 revenue to last year"
+"Show me the profit and loss overview"
+"What's the balance on account 1300 (Debiteuren)?"
+"Show me the balance sheet summary"
+"List all P&L accounts with balances"
+"Show aging receivables - who owes us money?"
+"What transactions were made to account 8000 this year?"
 ```
 
 ## License

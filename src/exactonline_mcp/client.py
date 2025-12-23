@@ -26,11 +26,18 @@ from exactonline_mcp.exceptions import (
     RateLimitError,
 )
 from exactonline_mcp.models import (
+    ACCOUNT_TYPE_CATEGORIES,
+    AgingEntry,
+    BalanceSheetCategory,
+    BalanceSheetSummary,
     CustomerRevenue,
     Division,
     ExplorationResult,
+    GLAccountBalance,
+    ProfitLossOverview,
     ProjectRevenue,
     Token,
+    TransactionLine,
 )
 
 logger = logging.getLogger(__name__)
@@ -848,3 +855,462 @@ class ExactOnlineClient:
         # Sort by revenue descending
         projects.sort(key=lambda p: p.revenue, reverse=True)
         return projects
+
+    # =========================================================================
+    # Financial Reporting Helper Functions (Feature 001-balance-sheet-financial)
+    # =========================================================================
+
+    async def fetch_profit_loss_overview(
+        self,
+        division: int,
+    ) -> ProfitLossOverview:
+        """Fetch profit and loss overview from Exact Online.
+
+        Args:
+            division: Division code.
+
+        Returns:
+            ProfitLossOverview with year-over-year comparison data.
+        """
+        data = await self.get(
+            endpoint="read/financial/ProfitLossOverview",
+            division=division,
+        )
+
+        # Extract results - this endpoint returns d as array
+        d = data.get("d", [])
+        if isinstance(d, dict):
+            results = d.get("results", [])
+        else:
+            results = d if isinstance(d, list) else []
+
+        # Default values for empty results
+        if not results:
+            from datetime import datetime as dt
+            current_year = dt.now().year
+            return ProfitLossOverview(
+                division=division,
+                current_year=current_year,
+                previous_year=current_year - 1,
+                currency_code="EUR",
+                revenue_current_year=0.0,
+                revenue_previous_year=0.0,
+                costs_current_year=0.0,
+                costs_previous_year=0.0,
+                result_current_year=0.0,
+                result_previous_year=0.0,
+                current_period=1,
+                revenue_current_period=0.0,
+                costs_current_period=0.0,
+                result_current_period=0.0,
+            )
+
+        # P&L Overview returns a single record
+        record = results[0]
+
+        return ProfitLossOverview(
+            division=division,
+            current_year=record.get("CurrentYear", 0),
+            previous_year=record.get("PreviousYear", 0),
+            currency_code=record.get("CurrencyCode", "EUR"),
+            revenue_current_year=float(record.get("RevenueCurrentYear", 0) or 0),
+            revenue_previous_year=float(record.get("RevenuePreviousYear", 0) or 0),
+            costs_current_year=float(record.get("CostsCurrentYear", 0) or 0),
+            costs_previous_year=float(record.get("CostsPreviousYear", 0) or 0),
+            result_current_year=float(record.get("ResultCurrentYear", 0) or 0),
+            result_previous_year=float(record.get("ResultPreviousYear", 0) or 0),
+            current_period=record.get("CurrentPeriod", 1),
+            revenue_current_period=float(record.get("RevenueCurrentPeriod", 0) or 0),
+            costs_current_period=float(record.get("CostsCurrentPeriod", 0) or 0),
+            result_current_period=float(record.get("ResultCurrentPeriod", 0) or 0),
+        )
+
+    async def fetch_gl_account_by_code(
+        self,
+        division: int,
+        account_code: str,
+    ) -> dict[str, Any] | None:
+        """Fetch a GL account by its code.
+
+        Args:
+            division: Division code.
+            account_code: GL account code (e.g., "1300").
+
+        Returns:
+            GL account data dict or None if not found.
+        """
+        data = await self.get(
+            endpoint="financial/GLAccounts",
+            division=division,
+            filter=f"Code eq '{account_code}'",
+            select="ID,Code,Description,BalanceType,Type,TypeDescription",
+            top=1,
+        )
+
+        d = data.get("d", [])
+        if isinstance(d, dict):
+            results = d.get("results", [])
+        else:
+            results = d if isinstance(d, list) else []
+
+        return results[0] if results else None
+
+    async def fetch_reporting_balance(
+        self,
+        division: int,
+        gl_account_id: str,
+        year: int | None = None,
+        period: int | None = None,
+    ) -> dict[str, Any] | None:
+        """Fetch reporting balance for a specific GL account.
+
+        Args:
+            division: Division code.
+            gl_account_id: GL account GUID.
+            year: Fiscal year (optional, defaults to current).
+            period: Reporting period 1-12 (optional, defaults to current).
+
+        Returns:
+            Reporting balance data dict or None if not found.
+        """
+        filter_parts = [f"GLAccountID eq guid'{gl_account_id}'"]
+
+        if year:
+            filter_parts.append(f"ReportingYear eq {year}")
+        if period:
+            filter_parts.append(f"ReportingPeriod eq {period}")
+
+        data = await self.get(
+            endpoint="financial/ReportingBalance",
+            division=division,
+            filter=" and ".join(filter_parts),
+            select="ID,GLAccountID,GLAccountCode,GLAccountDescription,Amount,AmountDebit,AmountCredit,BalanceType,Type,TypeDescription,ReportingYear,ReportingPeriod",
+            top=1,
+            orderby="ReportingYear desc,ReportingPeriod desc",
+        )
+
+        d = data.get("d", [])
+        if isinstance(d, dict):
+            results = d.get("results", [])
+        else:
+            results = d if isinstance(d, list) else []
+
+        return results[0] if results else None
+
+    async def fetch_all_balance_sheet_balances(
+        self,
+        division: int,
+        year: int | None = None,
+        period: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Fetch all balance sheet account balances.
+
+        Args:
+            division: Division code.
+            year: Fiscal year (optional).
+            period: Reporting period (optional).
+
+        Returns:
+            List of reporting balance records for balance sheet accounts.
+        """
+        filter_parts = ["BalanceType eq 'B'"]
+
+        if year:
+            filter_parts.append(f"ReportingYear eq {year}")
+        if period:
+            filter_parts.append(f"ReportingPeriod eq {period}")
+
+        return await self.get_all_paginated(
+            endpoint="financial/ReportingBalance",
+            division=division,
+            filter=" and ".join(filter_parts),
+            select="ID,GLAccountID,GLAccountCode,GLAccountDescription,Amount,AmountDebit,AmountCredit,BalanceType,Type,TypeDescription,ReportingYear,ReportingPeriod",
+        )
+
+    def aggregate_balances_by_category(
+        self,
+        balances: list[dict[str, Any]],
+        division: int,
+        year: int,
+        period: int,
+    ) -> BalanceSheetSummary:
+        """Aggregate balance records into balance sheet categories.
+
+        Args:
+            balances: List of reporting balance records.
+            division: Division code.
+            year: Reporting year.
+            period: Reporting period.
+
+        Returns:
+            BalanceSheetSummary with categorized totals.
+        """
+        category_totals: dict[str, dict[str, Any]] = defaultdict(
+            lambda: {"amount": 0.0, "count": 0}
+        )
+
+        for balance in balances:
+            account_type = balance.get("Type", 0)
+            amount = float(balance.get("Amount", 0) or 0)
+
+            # Look up category from mapping
+            category_info = ACCOUNT_TYPE_CATEGORIES.get(account_type)
+            if category_info:
+                category, name = category_info
+                if category != "pl":  # Skip P&L accounts
+                    key = f"{category}:{name}"
+                    category_totals[key]["amount"] += amount
+                    category_totals[key]["count"] += 1
+                    category_totals[key]["category"] = category
+                    category_totals[key]["name"] = name
+            else:
+                # Unknown type - classify by type description if available
+                type_desc = balance.get("TypeDescription", "Unknown")
+                # Default to assets for unknown balance sheet types
+                key = f"assets:{type_desc}"
+                category_totals[key]["amount"] += amount
+                category_totals[key]["count"] += 1
+                category_totals[key]["category"] = "assets"
+                category_totals[key]["name"] = type_desc
+
+        # Build category lists
+        assets: list[BalanceSheetCategory] = []
+        liabilities: list[BalanceSheetCategory] = []
+        equity: list[BalanceSheetCategory] = []
+
+        for _key, data in category_totals.items():
+            category_obj = BalanceSheetCategory(
+                name=data["name"],
+                amount=round(data["amount"], 2),
+                account_count=data["count"],
+            )
+            if data["category"] == "assets":
+                assets.append(category_obj)
+            elif data["category"] == "liabilities":
+                liabilities.append(category_obj)
+            elif data["category"] == "equity":
+                equity.append(category_obj)
+
+        # Calculate totals
+        total_assets = sum(c.amount for c in assets)
+        total_liabilities = sum(c.amount for c in liabilities)
+        total_equity = sum(c.amount for c in equity)
+
+        return BalanceSheetSummary(
+            division=division,
+            reporting_year=year,
+            reporting_period=period,
+            currency_code="EUR",
+            total_assets=round(total_assets, 2),
+            total_liabilities=round(total_liabilities, 2),
+            total_equity=round(total_equity, 2),
+            assets=sorted(assets, key=lambda c: c.amount, reverse=True),
+            liabilities=sorted(liabilities, key=lambda c: c.amount, reverse=True),
+            equity=sorted(equity, key=lambda c: c.amount, reverse=True),
+        )
+
+    async def fetch_filtered_balances(
+        self,
+        division: int,
+        balance_type: str | None = None,
+        account_type: int | None = None,
+        year: int | None = None,
+        period: int | None = None,
+    ) -> list[GLAccountBalance]:
+        """Fetch GL account balances with optional filters.
+
+        Args:
+            division: Division code.
+            balance_type: "B" for balance sheet, "W" for P&L (optional).
+            account_type: Account type code (optional).
+            year: Fiscal year (optional).
+            period: Reporting period (optional).
+
+        Returns:
+            List of GLAccountBalance objects.
+        """
+        filter_parts = []
+
+        if balance_type:
+            filter_parts.append(f"BalanceType eq '{balance_type}'")
+        if account_type:
+            filter_parts.append(f"Type eq {account_type}")
+        if year:
+            filter_parts.append(f"ReportingYear eq {year}")
+        if period:
+            filter_parts.append(f"ReportingPeriod eq {period}")
+
+        records = await self.get_all_paginated(
+            endpoint="financial/ReportingBalance",
+            division=division,
+            filter=" and ".join(filter_parts) if filter_parts else None,
+            select="ID,GLAccountID,GLAccountCode,GLAccountDescription,Amount,AmountDebit,AmountCredit,BalanceType,Type,TypeDescription,ReportingYear,ReportingPeriod",
+            orderby="GLAccountCode",
+        )
+
+        return [
+            GLAccountBalance(
+                gl_account_id=r.get("GLAccountID", ""),
+                gl_account_code=r.get("GLAccountCode", ""),
+                gl_account_description=r.get("GLAccountDescription", ""),
+                amount=float(r.get("Amount", 0) or 0),
+                amount_debit=float(r.get("AmountDebit", 0) or 0),
+                amount_credit=float(r.get("AmountCredit", 0) or 0),
+                balance_type=r.get("BalanceType", ""),
+                account_type=r.get("Type", 0),
+                account_type_description=r.get("TypeDescription", ""),
+                reporting_year=r.get("ReportingYear", 0),
+                reporting_period=r.get("ReportingPeriod", 0),
+            )
+            for r in records
+        ]
+
+    async def fetch_aging_receivables(
+        self,
+        division: int,
+    ) -> list[AgingEntry]:
+        """Fetch aging receivables report.
+
+        Args:
+            division: Division code.
+
+        Returns:
+            List of AgingEntry objects for outstanding receivables.
+        """
+        data = await self.get(
+            endpoint="read/financial/AgingReceivablesList",
+            division=division,
+        )
+
+        d = data.get("d", [])
+        if isinstance(d, dict):
+            results = d.get("results", [])
+        else:
+            results = d if isinstance(d, list) else []
+
+        return [
+            AgingEntry(
+                account_id=r.get("AccountId", "") or "",
+                account_code=r.get("AccountCode", "") or "",
+                account_name=r.get("AccountName", "") or "",
+                total_amount=float(r.get("TotalAmount", 0) or 0),
+                age_0_30=float(r.get("AgeGroup1Amount", 0) or 0),
+                age_31_60=float(r.get("AgeGroup2Amount", 0) or 0),
+                age_61_90=float(r.get("AgeGroup3Amount", 0) or 0),
+                age_over_90=float(r.get("AgeGroup4Amount", 0) or 0),
+                currency_code=r.get("CurrencyCode", "EUR") or "EUR",
+            )
+            for r in results
+        ]
+
+    async def fetch_aging_payables(
+        self,
+        division: int,
+    ) -> list[AgingEntry]:
+        """Fetch aging payables report.
+
+        Args:
+            division: Division code.
+
+        Returns:
+            List of AgingEntry objects for outstanding payables.
+        """
+        data = await self.get(
+            endpoint="read/financial/AgingPayablesList",
+            division=division,
+        )
+
+        d = data.get("d", [])
+        if isinstance(d, dict):
+            results = d.get("results", [])
+        else:
+            results = d if isinstance(d, list) else []
+
+        return [
+            AgingEntry(
+                account_id=r.get("AccountId", "") or "",
+                account_code=r.get("AccountCode", "") or "",
+                account_name=r.get("AccountName", "") or "",
+                total_amount=float(r.get("TotalAmount", 0) or 0),
+                age_0_30=float(r.get("AgeGroup1Amount", 0) or 0),
+                age_31_60=float(r.get("AgeGroup2Amount", 0) or 0),
+                age_61_90=float(r.get("AgeGroup3Amount", 0) or 0),
+                age_over_90=float(r.get("AgeGroup4Amount", 0) or 0),
+                currency_code=r.get("CurrencyCode", "EUR") or "EUR",
+            )
+            for r in results
+        ]
+
+    async def fetch_transaction_lines(
+        self,
+        division: int,
+        gl_account_id: str,
+        year: int | None = None,
+        period: int | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        limit: int = 100,
+    ) -> list[TransactionLine]:
+        """Fetch transaction lines for a specific GL account.
+
+        Args:
+            division: Division code.
+            gl_account_id: GL account GUID.
+            year: Fiscal year filter (optional).
+            period: Reporting period filter (optional, used with year).
+            start_date: Start date filter YYYY-MM-DD (optional).
+            end_date: End date filter YYYY-MM-DD (optional).
+            limit: Maximum records to return (default 100).
+
+        Returns:
+            List of TransactionLine objects.
+        """
+        filter_parts = [f"GLAccount eq guid'{gl_account_id}'"]
+
+        if year:
+            filter_parts.append(f"FinancialYear eq {year}")
+        if period:
+            filter_parts.append(f"FinancialPeriod eq {period}")
+        if start_date and end_date:
+            filter_parts.append(self.build_date_filter(start_date, end_date, "Date"))
+
+        data = await self.get(
+            endpoint="financialtransaction/TransactionLines",
+            division=division,
+            filter=" and ".join(filter_parts),
+            select="ID,Date,FinancialYear,FinancialPeriod,GLAccountCode,GLAccountDescription,Description,AmountDC,EntryNumber,JournalCode",
+            top=limit,
+            orderby="Date desc",
+        )
+
+        d = data.get("d", [])
+        if isinstance(d, dict):
+            results = d.get("results", [])
+        else:
+            results = d if isinstance(d, list) else []
+
+        transactions: list[TransactionLine] = []
+        for r in results:
+            # Parse date from Exact Online format
+            date_str = r.get("Date", "")
+            if date_str.startswith("/Date("):
+                timestamp_ms = int(date_str[6:-2].split("+")[0].split("-")[0])
+                from datetime import datetime as dt
+                parsed_date = dt.fromtimestamp(timestamp_ms / 1000).strftime("%Y-%m-%d")
+            else:
+                parsed_date = date_str[:10] if date_str else ""
+
+            transactions.append(TransactionLine(
+                id=r.get("ID", ""),
+                date=parsed_date,
+                financial_year=r.get("FinancialYear", 0),
+                financial_period=r.get("FinancialPeriod", 0),
+                gl_account_code=r.get("GLAccountCode", ""),
+                gl_account_description=r.get("GLAccountDescription", ""),
+                description=r.get("Description", "") or "",
+                amount=float(r.get("AmountDC", 0) or 0),
+                entry_number=r.get("EntryNumber", 0),
+                journal_code=r.get("JournalCode", "") or "",
+            ))
+
+        return transactions

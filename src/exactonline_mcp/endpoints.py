@@ -121,6 +121,37 @@ KNOWN_ENDPOINTS: list[Endpoint] = [
         description="Purchase orders header data",
         typical_use="Track purchase orders",
     ),
+    # Financial reporting endpoints (Feature 001-balance-sheet-financial)
+    Endpoint(
+        path="read/financial/ProfitLossOverview",
+        category="financial",
+        description="Profit & loss summary with year-over-year comparison",
+        typical_use="Get P&L overview, revenue vs costs comparison",
+    ),
+    Endpoint(
+        path="financial/ReportingBalance",
+        category="financial",
+        description="GL account balances by reporting period",
+        typical_use="Check account balances, balance sheet data",
+    ),
+    Endpoint(
+        path="read/financial/AgingReceivablesList",
+        category="financial",
+        description="Outstanding receivables with aging buckets",
+        typical_use="Analyze overdue customer invoices by age",
+    ),
+    Endpoint(
+        path="read/financial/AgingPayablesList",
+        category="financial",
+        description="Outstanding payables with aging buckets",
+        typical_use="Analyze overdue supplier invoices by age",
+    ),
+    Endpoint(
+        path="financial/FinancialPeriods",
+        category="financial",
+        description="Fiscal year and period definitions",
+        typical_use="Get period boundaries for reporting",
+    ),
 ]
 
 
