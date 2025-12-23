@@ -43,6 +43,43 @@ from exactonline_mcp.models import (
 logger = logging.getLogger(__name__)
 
 
+def sanitize_odata_string(value: str) -> str:
+    """Sanitize a string value for use in OData filter expressions.
+
+    Prevents OData injection by escaping single quotes and validating input.
+
+    Args:
+        value: The string value to sanitize.
+
+    Returns:
+        Sanitized string safe for OData filter interpolation.
+
+    Raises:
+        ValueError: If the input contains suspicious patterns.
+    """
+    if not isinstance(value, str):
+        raise ValueError("OData filter value must be a string")
+
+    # Reject obviously malicious patterns
+    suspicious_patterns = [
+        " or ",
+        " and ",
+        " eq ",
+        " ne ",
+        " gt ",
+        " lt ",
+        " ge ",
+        " le ",
+    ]
+    lower_value = value.lower()
+    for pattern in suspicious_patterns:
+        if pattern in lower_value:
+            raise ValueError(f"Invalid characters in filter value: {value}")
+
+    # Escape single quotes by doubling them (OData standard)
+    return value.replace("'", "''")
+
+
 class RateLimiter:
     """Rate limiter for Exact Online API (60 calls/minute)."""
 
@@ -938,11 +975,15 @@ class ExactOnlineClient:
 
         Returns:
             GL account data dict or None if not found.
+
+        Raises:
+            ValueError: If account_code contains invalid characters.
         """
+        safe_code = sanitize_odata_string(account_code)
         data = await self.get(
             endpoint="financial/GLAccounts",
             division=division,
-            filter=f"Code eq '{account_code}'",
+            filter=f"Code eq '{safe_code}'",
             select="ID,Code,Description,BalanceType,Type,TypeDescription",
             top=1,
         )
@@ -1128,11 +1169,15 @@ class ExactOnlineClient:
 
         Returns:
             List of GLAccountBalance objects.
+
+        Raises:
+            ValueError: If balance_type contains invalid characters.
         """
         filter_parts = []
 
         if balance_type:
-            filter_parts.append(f"BalanceType eq '{balance_type}'")
+            safe_balance_type = sanitize_odata_string(balance_type)
+            filter_parts.append(f"BalanceType eq '{safe_balance_type}'")
         if account_type:
             filter_parts.append(f"Type eq {account_type}")
         if year:
