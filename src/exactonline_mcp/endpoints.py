@@ -29,16 +29,16 @@ KNOWN_ENDPOINTS: list[Endpoint] = [
     ),
     # Sales endpoints
     Endpoint(
-        path="sales/SalesInvoices",
+        path="salesinvoice/SalesInvoices",
         category="sales",
-        description="Sales invoices header data",
-        typical_use="List invoices, check invoice status",
+        description="Sales invoices header data with amounts and status",
+        typical_use="Revenue analysis, list invoices, check invoice status",
     ),
     Endpoint(
-        path="sales/SalesInvoiceLines",
+        path="salesinvoice/SalesInvoiceLines",
         category="sales",
-        description="Line items on sales invoices",
-        typical_use="Get invoice line details",
+        description="Invoice line items with project links",
+        typical_use="Project-based revenue, get invoice line details",
     ),
     Endpoint(
         path="salesorder/SalesOrders",

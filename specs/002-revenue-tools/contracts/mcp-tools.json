@@ -1,0 +1,321 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Revenue Tools MCP Contract",
+  "description": "MCP tool definitions for Exact Online revenue analysis",
+  "version": "1.0.0",
+  "tools": [
+    {
+      "name": "get_revenue_by_period",
+      "description": "Get revenue totals grouped by time period with year-over-year comparison. Returns revenue for each period within the date range, along with comparison to the same period in the previous year.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "start_date": {
+            "type": "string",
+            "format": "date",
+            "description": "Start date in ISO format (YYYY-MM-DD)"
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date",
+            "description": "End date in ISO format (YYYY-MM-DD)"
+          },
+          "group_by": {
+            "type": "string",
+            "enum": ["month", "quarter", "year"],
+            "default": "month",
+            "description": "Period grouping: month, quarter, or year"
+          },
+          "division": {
+            "type": "integer",
+            "description": "Division code. If not specified, uses current division."
+          }
+        },
+        "required": ["start_date", "end_date"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "division": {
+            "type": "integer",
+            "description": "Division code used"
+          },
+          "start_date": {
+            "type": "string",
+            "description": "Requested start date"
+          },
+          "end_date": {
+            "type": "string",
+            "description": "Requested end date"
+          },
+          "group_by": {
+            "type": "string",
+            "description": "Period grouping used"
+          },
+          "total_revenue": {
+            "type": "number",
+            "description": "Total revenue across all periods"
+          },
+          "total_invoices": {
+            "type": "integer",
+            "description": "Total invoice count"
+          },
+          "periods": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "period_key": {
+                  "type": "string",
+                  "description": "Period identifier (e.g., '2024-01', '2024-Q1', '2024')"
+                },
+                "start_date": {
+                  "type": "string",
+                  "description": "First day of period"
+                },
+                "end_date": {
+                  "type": "string",
+                  "description": "Last day of period"
+                },
+                "revenue": {
+                  "type": "number",
+                  "description": "Revenue in default currency"
+                },
+                "invoice_count": {
+                  "type": "integer",
+                  "description": "Number of invoices"
+                },
+                "previous_revenue": {
+                  "type": ["number", "null"],
+                  "description": "Revenue for same period last year"
+                },
+                "change_percentage": {
+                  "type": ["number", "null"],
+                  "description": "Year-over-year change percentage"
+                }
+              },
+              "required": ["period_key", "start_date", "end_date", "revenue", "invoice_count"]
+            }
+          }
+        },
+        "required": ["division", "start_date", "end_date", "group_by", "total_revenue", "total_invoices", "periods"]
+      }
+    },
+    {
+      "name": "get_revenue_by_customer",
+      "description": "Get customer revenue rankings with metrics. Returns customers sorted by revenue descending, with invoice count and percentage of total revenue.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "division": {
+            "type": "integer",
+            "description": "Division code. If not specified, uses current division."
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date",
+            "description": "Start date in ISO format (YYYY-MM-DD). Optional."
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date",
+            "description": "End date in ISO format (YYYY-MM-DD). Optional."
+          },
+          "top": {
+            "type": "integer",
+            "default": 10,
+            "minimum": 1,
+            "maximum": 100,
+            "description": "Number of top customers to return (default 10)"
+          }
+        },
+        "required": []
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "division": {
+            "type": "integer",
+            "description": "Division code used"
+          },
+          "start_date": {
+            "type": ["string", "null"],
+            "description": "Start date filter (null if not filtered)"
+          },
+          "end_date": {
+            "type": ["string", "null"],
+            "description": "End date filter (null if not filtered)"
+          },
+          "total_revenue": {
+            "type": "number",
+            "description": "Total revenue across all customers"
+          },
+          "total_invoices": {
+            "type": "integer",
+            "description": "Total invoice count"
+          },
+          "customer_count": {
+            "type": "integer",
+            "description": "Number of unique customers"
+          },
+          "customers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "customer_id": {
+                  "type": "string",
+                  "description": "Customer GUID"
+                },
+                "customer_name": {
+                  "type": "string",
+                  "description": "Customer name"
+                },
+                "revenue": {
+                  "type": "number",
+                  "description": "Customer revenue in default currency"
+                },
+                "invoice_count": {
+                  "type": "integer",
+                  "description": "Number of invoices"
+                },
+                "percentage_of_total": {
+                  "type": "number",
+                  "description": "Share of total revenue (0-100)"
+                }
+              },
+              "required": ["customer_id", "customer_name", "revenue", "invoice_count", "percentage_of_total"]
+            }
+          }
+        },
+        "required": ["division", "total_revenue", "total_invoices", "customer_count", "customers"]
+      }
+    },
+    {
+      "name": "get_revenue_by_project",
+      "description": "Get project-based revenue with optional hours tracking. Returns projects with revenue from invoice lines and optionally logged hours from time transactions.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "division": {
+            "type": "integer",
+            "description": "Division code. If not specified, uses current division."
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date",
+            "description": "Start date in ISO format (YYYY-MM-DD). Optional."
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date",
+            "description": "End date in ISO format (YYYY-MM-DD). Optional."
+          },
+          "include_hours": {
+            "type": "boolean",
+            "default": true,
+            "description": "Whether to fetch hours from TimeTransactions (may slow response)"
+          }
+        },
+        "required": []
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "division": {
+            "type": "integer",
+            "description": "Division code used"
+          },
+          "start_date": {
+            "type": ["string", "null"],
+            "description": "Start date filter (null if not filtered)"
+          },
+          "end_date": {
+            "type": ["string", "null"],
+            "description": "End date filter (null if not filtered)"
+          },
+          "total_revenue": {
+            "type": "number",
+            "description": "Total revenue across all projects"
+          },
+          "total_invoices": {
+            "type": "integer",
+            "description": "Total invoice line count"
+          },
+          "project_count": {
+            "type": "integer",
+            "description": "Number of unique projects"
+          },
+          "hours_available": {
+            "type": "boolean",
+            "description": "Whether hours data was fetched"
+          },
+          "projects": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "project_id": {
+                  "type": "string",
+                  "description": "Project GUID"
+                },
+                "project_code": {
+                  "type": "string",
+                  "description": "Project code"
+                },
+                "project_name": {
+                  "type": "string",
+                  "description": "Project description"
+                },
+                "client_id": {
+                  "type": ["string", "null"],
+                  "description": "Client GUID"
+                },
+                "client_name": {
+                  "type": ["string", "null"],
+                  "description": "Client name"
+                },
+                "revenue": {
+                  "type": "number",
+                  "description": "Project revenue in default currency"
+                },
+                "invoice_count": {
+                  "type": "integer",
+                  "description": "Number of invoice lines"
+                },
+                "hours": {
+                  "type": ["number", "null"],
+                  "description": "Total hours logged (null if not fetched)"
+                }
+              },
+              "required": ["project_id", "project_code", "project_name", "revenue", "invoice_count"]
+            }
+          }
+        },
+        "required": ["division", "total_revenue", "total_invoices", "project_count", "hours_available", "projects"]
+      }
+    }
+  ],
+  "errorResponses": {
+    "authentication_error": {
+      "error": "authentication_required",
+      "message": "Not authenticated. Run 'exactonline-mcp auth' to authenticate.",
+      "action": "Run authentication flow"
+    },
+    "division_not_found": {
+      "error": "division_not_accessible",
+      "message": "Division {code} is not accessible or does not exist",
+      "action": "Use list_divisions to see available divisions"
+    },
+    "invalid_date_range": {
+      "error": "invalid_date_range",
+      "message": "Invalid date range: start_date must be before end_date",
+      "action": "Provide valid date range in ISO format"
+    },
+    "no_project_module": {
+      "error": "project_module_unavailable",
+      "message": "Project module is not enabled for this division",
+      "action": "This tool requires the project module in Exact Online"
+    }
+  }
+}

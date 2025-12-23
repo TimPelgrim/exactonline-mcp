@@ -59,9 +59,24 @@ Add to your Claude config:
 
 ## Available Tools
 
+### Discovery Tools
 - **list_divisions** - List accessible Exact Online divisions
 - **explore_endpoint** - Explore any API endpoint with sample data
 - **list_endpoints** - Browse known API endpoints by category
+
+### Revenue Tools
+- **get_revenue_by_period** - Revenue totals by month/quarter/year with year-over-year comparison
+- **get_revenue_by_customer** - Customer revenue rankings with invoice counts
+- **get_revenue_by_project** - Project-based revenue with optional hours tracking
+
+## Example Prompts
+
+```
+"Show me revenue by quarter for 2024"
+"Who are our top 5 customers?"
+"What's the revenue per project this year?"
+"Compare Q1 revenue to last year"
+```
 
 ## License
 

@@ -1,7 +1,7 @@
 """Data models for Exact Online MCP server.
 
 This module contains dataclasses representing the core entities used throughout
-the application: Division, Token, Endpoint, and ExplorationResult.
+the application: Division, Token, Endpoint, ExplorationResult, and revenue models.
 """
 
 from dataclasses import dataclass, field
@@ -59,7 +59,9 @@ class Token:
             True if token is expired or will expire within buffer_seconds.
         """
         elapsed = (datetime.now() - self.obtained_at).total_seconds()
-        return elapsed >= (self.expires_in - buffer_seconds)
+        # Ensure expires_in is int (may be string from old keyring data)
+        expires_in = int(self.expires_in) if isinstance(self.expires_in, str) else self.expires_in
+        return elapsed >= (expires_in - buffer_seconds)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for storage (excluding sensitive display)."""
@@ -146,4 +148,111 @@ class ExplorationResult:
             "count": self.count,
             "data": self.data,
             "available_fields": self.available_fields,
+        }
+
+
+# =============================================================================
+# Revenue Models (Feature 002-revenue-tools)
+# =============================================================================
+
+
+@dataclass
+class RevenuePeriod:
+    """Revenue totals for a time period with year-over-year comparison.
+
+    Args:
+        period_key: Period identifier (e.g., "2024-Q1", "2024-01", "2024").
+        start_date: First day of the period (ISO format YYYY-MM-DD).
+        end_date: Last day of the period (ISO format YYYY-MM-DD).
+        revenue: Total revenue in default currency.
+        invoice_count: Number of invoices in period.
+        previous_revenue: Revenue for same period last year (None if N/A).
+        change_percentage: Year-over-year change (None if previous is None/zero).
+    """
+
+    period_key: str
+    start_date: str
+    end_date: str
+    revenue: float
+    invoice_count: int
+    previous_revenue: float | None = None
+    change_percentage: float | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "period_key": self.period_key,
+            "start_date": self.start_date,
+            "end_date": self.end_date,
+            "revenue": self.revenue,
+            "invoice_count": self.invoice_count,
+            "previous_revenue": self.previous_revenue,
+            "change_percentage": self.change_percentage,
+        }
+
+
+@dataclass
+class CustomerRevenue:
+    """Revenue metrics for a single customer.
+
+    Args:
+        customer_id: Exact Online account GUID.
+        customer_name: Account name.
+        revenue: Total revenue in default currency.
+        invoice_count: Number of invoices.
+        percentage_of_total: Share of total revenue (0-100).
+    """
+
+    customer_id: str
+    customer_name: str
+    revenue: float
+    invoice_count: int
+    percentage_of_total: float
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "customer_id": self.customer_id,
+            "customer_name": self.customer_name,
+            "revenue": self.revenue,
+            "invoice_count": self.invoice_count,
+            "percentage_of_total": self.percentage_of_total,
+        }
+
+
+@dataclass
+class ProjectRevenue:
+    """Revenue metrics for a single project.
+
+    Args:
+        project_id: Exact Online project GUID.
+        project_code: Project code.
+        project_name: Project description.
+        client_id: Client account GUID (optional).
+        client_name: Client account name (optional).
+        revenue: Total revenue in default currency.
+        invoice_count: Number of invoice lines.
+        hours: Total hours logged (optional, from TimeTransactions).
+    """
+
+    project_id: str
+    project_code: str
+    project_name: str
+    client_id: str | None
+    client_name: str | None
+    revenue: float
+    invoice_count: int
+    hours: float | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "project_id": self.project_id,
+            "project_code": self.project_code,
+            "project_name": self.project_name,
+            "client_id": self.client_id,
+            "client_name": self.client_name,
+            "revenue": self.revenue,
+            "invoice_count": self.invoice_count,
+            "hours": self.hours,
         }
