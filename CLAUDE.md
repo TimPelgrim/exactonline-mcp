@@ -64,6 +64,7 @@ uv run ruff check .
 
 ## Recent Changes
 
+- 002-revenue-tools: Revenue analysis tools (get_revenue_by_period, get_revenue_by_customer, get_revenue_by_project)
 - 001-discovery-tools: Initial MCP server with discovery tools
 
 <!-- MANUAL ADDITIONS START -->
@@ -72,4 +73,14 @@ uv run ruff check .
 - FastMCP uses `instructions` parameter (not `description`) for server description
 - Token refresh uses 30-second buffer before expiry for safety margin
 - Rate limiter uses sliding 60-second window tracking
+- Exact Online API response formats vary: `d.results` array (system) vs `d` direct array (data)
+- OAuth requires external HTTPS tunnel (ngrok) - localhost URIs rejected
+
+## Revenue Tools API Notes
+
+- Revenue from `salesinvoice/SalesInvoices` - filter `Status eq 50` for processed
+- Credit notes have negative AmountDC values
+- Project field is on SalesInvoiceLines, not SalesInvoices
+- TimeTransactions.Quantity = hours (when linked to time-based Item)
+- Year-over-year comparison: same period last year (Q1 2024 vs Q1 2023)
 <!-- MANUAL ADDITIONS END -->
