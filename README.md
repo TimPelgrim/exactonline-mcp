@@ -68,29 +68,48 @@ Replace with your actual credentials (see next section).
 
 ## Updating
 
-To get the latest version:
+We regularly release updates with new features, bug fixes, and security improvements. We recommend checking for updates periodically.
+
+### How to update
+
+Open Terminal, then run these commands:
 
 ```bash
+# 1. Go to the installation folder
 cd exactonline-mcp
+
+# 2. Download the latest version
 git pull origin main
+
+# 3. Update dependencies
 uv sync
 ```
 
-After updating, restart Claude Desktop to pick up changes.
+After updating, **restart Claude Desktop** to use the new version.
 
-### Check your version
+### Check your current version
+
+To see which version you have installed:
 
 ```bash
+cd exactonline-mcp
 git describe --tags --always
 ```
 
-### View changelog
+This will show something like `v0.1.0` (a release) or `v0.1.0-5-g1234abc` (5 commits after v0.1.0).
 
-See what changed between versions:
+### What's new?
 
-```bash
-git log --oneline v0.1.0..HEAD
-```
+You can check what changed since your last update:
+
+- **On GitHub**: Visit the [Releases page](https://github.com/TimPelgrim/exactonline-mcp/releases) for release notes
+- **In Terminal**: Run `git log --oneline v0.1.0..HEAD` to see recent changes
+
+### Release history
+
+| Version | Date | Highlights |
+|---------|------|------------|
+| v0.1.0 | Dec 2024 | Initial release with 13 tools for revenue, financial reporting, and discovery |
 
 ## Exact Online App Setup
 
