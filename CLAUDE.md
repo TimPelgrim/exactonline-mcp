@@ -1,6 +1,6 @@
 # exactonline-mcp Development Guidelines
 
-Auto-generated from feature plans. Last updated: 2025-12-22
+Auto-generated from feature plans. Last updated: 2025-12-23
 
 ## Active Technologies
 
@@ -23,10 +23,7 @@ src/exactonline_mcp/
 └── exceptions.py    # Custom exceptions
 
 tests/
-├── conftest.py
-├── test_auth.py
-├── test_client.py
-└── test_tools.py
+└── test_sanitization.py  # OData input sanitization tests
 ```
 
 ## Commands
@@ -47,6 +44,38 @@ uv run pytest
 # Lint
 uv run ruff check .
 ```
+
+## Versioning & Releases
+
+This project uses git tags for versioning (semver format: `vX.Y.Z`).
+
+```bash
+# Check current version
+git describe --tags --always
+
+# View all tags
+git tag -l
+
+# View changelog since last release
+git log --oneline v0.1.0..HEAD
+```
+
+### Creating a new release
+
+1. Update version in `pyproject.toml`
+2. Commit all changes
+3. Create annotated tag:
+   ```bash
+   git tag -a v0.2.0 -m "Release description"
+   ```
+4. Push commits and tag:
+   ```bash
+   git push origin main --tags
+   ```
+
+### Version history
+
+- `v0.1.0` - Initial release with 13 MCP tools (discovery, revenue, financial)
 
 ## Code Style
 
