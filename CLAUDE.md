@@ -1,6 +1,6 @@
 # exactonline-mcp Development Guidelines
 
-Auto-generated from feature plans. Last updated: 2025-12-23
+Auto-generated from feature plans. Last updated: 2025-12-24
 
 ## Active Technologies
 
@@ -93,9 +93,9 @@ git log --oneline v0.1.0..HEAD
 
 ## Recent Changes
 
-- 001-balance-sheet-financial: Financial reporting tools (get_profit_loss_overview, get_gl_account_balance, get_balance_sheet_summary, list_gl_account_balances, get_aging_receivables, get_aging_payables, get_gl_account_transactions)
+- 003-open-receivables: Open receivables tools (get_open_receivables, get_customer_open_items, get_overdue_receivables)
 - 002-revenue-tools: Revenue analysis tools (get_revenue_by_period, get_revenue_by_customer, get_revenue_by_project)
-- 001-discovery-tools: Initial MCP server with discovery tools
+- 001-balance-sheet-financial: Financial reporting tools (get_profit_loss_overview, get_gl_account_balance, get_balance_sheet_summary, list_gl_account_balances, get_aging_receivables, get_aging_payables, get_gl_account_transactions)
 
 <!-- MANUAL ADDITIONS START -->
 ## Implementation Notes
@@ -145,30 +145,13 @@ Select: GLAccountCode,GLAccountDescription,Amount,ReportingPeriod
 financial/ReportingBalance?$filter=ReportingYear eq 2024 and ReportingPeriod ge 7 and ReportingPeriod le 9 and BalanceType eq 'W' and Amount gt 0&$select=GLAccountCode,GLAccountDescription,Amount,ReportingPeriod
 ```
 
-## Future Feature Ideas
+## Open Receivables API Notes
 
-### Open Receivables Tool (cashflow/Receivables)
-
-**Endpoint**: `cashflow/Receivables`
-
-**Use case**: Show detailed open invoices per customer with payment status, due dates, and aging.
-
-**Key fields**:
-- `AccountCode/AccountName` - Customer details
-- `InvoiceNumber`, `InvoiceDate`, `DueDate` - Invoice info
-- `TransactionAmountDC` - Original invoice amount
-- `AmountDC` - Remaining open amount (negative = receivable, positive = credit note)
-- `IsFullyPaid` - Payment status flag
-- `PaymentConditionDescription` - Payment terms
-
-**Filters**:
-- `IsFullyPaid eq false` - Only open items
-- Can filter by account, due date, etc.
-
-**Difference from AgingReceivablesList**: This endpoint shows individual invoice lines with full details, while AgingReceivablesList shows bucketed totals (0-30, 31-60, etc.) per customer.
-
-**Potential tools**:
-- `get_open_receivables` - List open invoices with filtering options
-- `get_customer_open_items` - Open items for a specific customer
-- `get_overdue_receivables` - Filter by DueDate < today
+- Endpoint: `cashflow/Receivables` for individual invoice detail
+- `AmountDC`: Negative = receivable (customer owes), Positive = credit (we owe)
+- `TransactionAmountDC`: Original invoice amount
+- OData dates in format `/Date(milliseconds)/` - use `parse_odata_date()` helper
+- Filter `IsFullyPaid eq false` for open items only
+- `days_overdue` calculated as (today - due_date).days
+- Different from `AgingReceivablesList` which shows bucketed totals per customer
 <!-- MANUAL ADDITIONS END -->
