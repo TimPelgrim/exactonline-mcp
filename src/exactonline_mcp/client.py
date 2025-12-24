@@ -7,9 +7,10 @@ requests to the Exact Online REST API.
 import asyncio
 import logging
 import os
+import re
 import time
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 from urllib.parse import urlencode
 
@@ -34,6 +35,7 @@ from exactonline_mcp.models import (
     Division,
     ExplorationResult,
     GLAccountBalance,
+    OpenReceivable,
     ProfitLossOverview,
     ProjectRevenue,
     Token,
@@ -78,6 +80,40 @@ def sanitize_odata_string(value: str) -> str:
 
     # Escape single quotes by doubling them (OData standard)
     return value.replace("'", "''")
+
+
+def parse_odata_date(date_str: str | None) -> str | None:
+    """Convert OData date format to ISO format string.
+
+    Exact Online returns dates in OData format: /Date(milliseconds)/ or
+    /Date(milliseconds+offset)/. This function extracts the timestamp
+    and converts it to YYYY-MM-DD format.
+
+    Args:
+        date_str: OData date string (e.g., "/Date(1756684800000)/") or None.
+
+    Returns:
+        ISO format date string (e.g., "2025-09-01") or None if input is None.
+
+    Examples:
+        >>> parse_odata_date("/Date(1756684800000)/")
+        "2025-09-01"
+        >>> parse_odata_date(None)
+        None
+    """
+    if date_str is None:
+        return None
+
+    # Match /Date(milliseconds)/ or /Date(milliseconds+offset)/
+    match = re.match(r"/Date\((-?\d+)([+-]\d+)?\)/", date_str)
+    if not match:
+        # Return as-is if not OData format (might already be ISO)
+        return date_str
+
+    milliseconds = int(match.group(1))
+    # Convert milliseconds to datetime
+    dt = datetime.fromtimestamp(milliseconds / 1000)
+    return dt.strftime("%Y-%m-%d")
 
 
 class RateLimiter:
@@ -1285,6 +1321,101 @@ class ExactOnlineClient:
             )
             for r in results
         ]
+
+    async def fetch_open_receivables(
+        self,
+        division: int,
+        top: int = 100,
+        account_code: str | None = None,
+        overdue_only: bool = False,
+    ) -> list[OpenReceivable]:
+        """Fetch open receivables from cashflow/Receivables endpoint.
+
+        Args:
+            division: Division code.
+            top: Maximum records to return (1-1000, default 100).
+            account_code: Filter by customer account code (optional).
+            overdue_only: Only return items past their due date (optional).
+
+        Returns:
+            List of OpenReceivable objects for outstanding invoices/credits.
+        """
+        # Build OData filter for open items
+        filters = ["IsFullyPaid eq false"]
+        if account_code:
+            safe_code = sanitize_odata_string(account_code.strip())
+            filters.append(f"trim(AccountCode) eq '{safe_code}'")
+        if overdue_only:
+            today = date.today().strftime("%Y-%m-%d")
+            filters.append(f"DueDate lt datetime'{today}'")
+
+        # Select only needed fields
+        select_fields = [
+            "AccountCode",
+            "AccountName",
+            "InvoiceNumber",
+            "InvoiceDate",
+            "DueDate",
+            "TransactionAmountDC",
+            "AmountDC",
+            "Description",
+            "PaymentConditionDescription",
+            "Currency",
+        ]
+
+        data = await self.get(
+            endpoint="cashflow/Receivables",
+            division=division,
+            filter=" and ".join(filters),
+            select=",".join(select_fields),
+            top=min(top, 1000),
+            orderby="DueDate",
+        )
+
+        d = data.get("d", [])
+        if isinstance(d, dict):
+            results = d.get("results", [])
+        else:
+            results = d if isinstance(d, list) else []
+
+        today = date.today()
+        receivables = []
+        for r in results:
+            # Parse dates
+            invoice_date = parse_odata_date(r.get("InvoiceDate"))
+            due_date = parse_odata_date(r.get("DueDate"))
+
+            # Calculate days overdue
+            days_overdue = 0
+            if due_date:
+                try:
+                    due_dt = datetime.strptime(due_date, "%Y-%m-%d").date()
+                    days_overdue = (today - due_dt).days
+                except ValueError:
+                    pass
+
+            # Get amounts - AmountDC negative = we receive money, positive = credit
+            amount_dc = float(r.get("AmountDC", 0) or 0)
+            transaction_amount = float(r.get("TransactionAmountDC", 0) or 0)
+
+            receivables.append(
+                OpenReceivable(
+                    account_code=(r.get("AccountCode") or "").strip(),
+                    account_name=r.get("AccountName") or "",
+                    invoice_number=int(r.get("InvoiceNumber", 0) or 0),
+                    invoice_date=invoice_date or "",
+                    due_date=due_date or "",
+                    original_amount=abs(transaction_amount),
+                    remaining_amount=abs(amount_dc),
+                    is_credit=amount_dc > 0,
+                    description=r.get("Description") or "",
+                    payment_terms=r.get("PaymentConditionDescription") or "",
+                    days_overdue=days_overdue,
+                    currency=r.get("Currency") or "EUR",
+                )
+            )
+
+        return receivables
 
     async def fetch_transaction_lines(
         self,

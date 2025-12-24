@@ -4,10 +4,11 @@ A Model Context Protocol (MCP) server providing read-only access to Exact Online
 
 ## Features
 
-- **13 tools** for querying Exact Online data
+- **16 tools** for querying Exact Online data
 - **Revenue analysis** - by period, customer, or project with year-over-year comparison
 - **Financial reporting** - P&L overview, balance sheet, GL account balances
-- **Aging reports** - outstanding receivables and payables
+- **Aging reports** - outstanding receivables and payables by age bucket
+- **Open receivables** - individual invoice detail, customer-specific views, overdue tracking
 - **Discovery tools** - explore any Exact Online API endpoint
 
 ## Security Considerations
@@ -204,9 +205,16 @@ Replace `/path/to/exactonline-mcp` with the actual path to your installation.
 | `get_gl_account_balance` | Balance for a specific GL account (grootboekrekening) |
 | `get_balance_sheet_summary` | Balance sheet totals by category (assets, liabilities, equity) |
 | `list_gl_account_balances` | List accounts with balances, filterable by type |
-| `get_aging_receivables` | Outstanding customer invoices by age (0-30, 31-60, 61-90, >90 days) |
-| `get_aging_payables` | Outstanding supplier invoices by age |
+| `get_aging_receivables` | Outstanding customer invoices by age bucket (0-30, 31-60, 61-90, >90 days) |
+| `get_aging_payables` | Outstanding supplier invoices by age bucket |
 | `get_gl_account_transactions` | Drill down into individual transactions for an account |
+
+### Open Receivables Tools
+| Tool | Description |
+|------|-------------|
+| `get_open_receivables` | List open invoices with filtering (by customer, overdue only) |
+| `get_customer_open_items` | All open items for a specific customer |
+| `get_overdue_receivables` | Overdue receivables sorted by days overdue |
 
 ## Example Prompts
 
@@ -221,6 +229,10 @@ Replace `/path/to/exactonline-mcp` with the actual path to your installation.
 "List all P&L accounts with balances"
 "Show aging receivables - who owes us money?"
 "What transactions were made to account 8000 this year?"
+"Show me all open invoices"
+"Which invoices are overdue?"
+"What's outstanding for customer 400?"
+"Show invoices more than 30 days overdue"
 ```
 
 ## Troubleshooting

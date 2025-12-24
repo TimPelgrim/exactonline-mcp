@@ -537,3 +537,102 @@ class TransactionLine:
             "entry_number": self.entry_number,
             "journal_code": self.journal_code,
         }
+
+
+# =============================================================================
+# Open Receivables Models (Feature 003-open-receivables)
+# =============================================================================
+
+
+@dataclass
+class OpenReceivable:
+    """Single open receivable (invoice/credit) from a customer.
+
+    Args:
+        account_code: Customer account code (e.g., "400").
+        account_name: Customer display name.
+        invoice_number: Invoice number.
+        invoice_date: Invoice date (ISO format YYYY-MM-DD).
+        due_date: Payment due date (ISO format YYYY-MM-DD).
+        original_amount: Original invoice amount (always positive).
+        remaining_amount: Amount still outstanding (always positive).
+        is_credit: True if this is a credit note/overpayment.
+        description: Invoice description/memo.
+        payment_terms: Payment condition description.
+        days_overdue: Days past due date (negative if not yet due).
+        currency: Currency code (typically EUR).
+    """
+
+    account_code: str
+    account_name: str
+    invoice_number: int
+    invoice_date: str
+    due_date: str
+    original_amount: float
+    remaining_amount: float
+    is_credit: bool
+    description: str
+    payment_terms: str
+    days_overdue: int
+    currency: str
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "account_code": self.account_code,
+            "account_name": self.account_name,
+            "invoice_number": self.invoice_number,
+            "invoice_date": self.invoice_date,
+            "due_date": self.due_date,
+            "original_amount": self.original_amount,
+            "remaining_amount": self.remaining_amount,
+            "is_credit": self.is_credit,
+            "description": self.description,
+            "payment_terms": self.payment_terms,
+            "days_overdue": self.days_overdue,
+            "currency": self.currency,
+        }
+
+
+@dataclass
+class OpenReceivablesSummary:
+    """Summary of open receivables query results.
+
+    Args:
+        division: Exact Online division code.
+        total_receivables: Total amount outstanding (excluding credits).
+        total_credits: Total credit amounts.
+        net_receivables: Net amount (receivables - credits).
+        invoice_count: Number of open invoices.
+        credit_count: Number of credit notes.
+        overdue_amount: Total amount that is past due.
+        overdue_count: Number of overdue items.
+        currency: Currency code.
+        items: List of individual receivables.
+    """
+
+    division: int
+    total_receivables: float
+    total_credits: float
+    net_receivables: float
+    invoice_count: int
+    credit_count: int
+    overdue_amount: float
+    overdue_count: int
+    currency: str
+    items: list[OpenReceivable] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "division": self.division,
+            "total_receivables": self.total_receivables,
+            "total_credits": self.total_credits,
+            "net_receivables": self.net_receivables,
+            "invoice_count": self.invoice_count,
+            "credit_count": self.credit_count,
+            "overdue_amount": self.overdue_amount,
+            "overdue_count": self.overdue_count,
+            "currency": self.currency,
+            "items": [item.to_dict() for item in self.items],
+        }

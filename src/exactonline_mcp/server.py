@@ -11,9 +11,12 @@ This module defines the FastMCP server instance and the tools:
 - get_gl_account_balance: Balance for a specific GL account
 - get_balance_sheet_summary: Balance sheet totals by category
 - list_gl_account_balances: List accounts with balances, filterable
-- get_aging_receivables: Outstanding customer invoices by age
-- get_aging_payables: Outstanding supplier invoices by age
+- get_aging_receivables: Outstanding customer invoices by age bucket
+- get_aging_payables: Outstanding supplier invoices by age bucket
 - get_gl_account_transactions: Drill down into individual transactions
+- get_open_receivables: List open invoices with filtering
+- get_customer_open_items: Open items for a specific customer
+- get_overdue_receivables: Overdue receivables sorted by age
 """
 
 import logging
@@ -1201,6 +1204,364 @@ async def get_gl_account_transactions(
 
     except ExactOnlineError as e:
         logger.error(f"Error getting GL account transactions: {e.message}")
+        return e.to_dict()
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        return {"error": str(e), "action": "Check server logs for details"}
+
+
+# =============================================================================
+# Open Receivables Tools (Feature 003-open-receivables)
+# =============================================================================
+
+
+@mcp.tool()
+async def get_open_receivables(
+    division: int | None = None,
+    top: int = 100,
+    account_code: str | None = None,
+    overdue_only: bool = False,
+) -> dict[str, Any]:
+    """List open (unpaid) receivables with optional filtering.
+
+    Shows individual invoice-level detail for outstanding customer invoices,
+    including due dates, amounts, and days overdue. Use this for tracking
+    specific invoices that need follow-up.
+
+    Args:
+        division: Division code. If not specified, uses current division.
+        top: Maximum records to return (1-1000, default 100).
+        account_code: Filter by customer account code (e.g., "400").
+        overdue_only: Only show items past their due date.
+
+    Returns:
+        Dictionary with totals and individual receivable items.
+
+    Example:
+        >>> await get_open_receivables()
+        {
+            "division": 1913290,
+            "total_receivables": 150000.00,
+            "total_credits": 5000.00,
+            "net_receivables": 145000.00,
+            "invoice_count": 25,
+            "credit_count": 2,
+            "overdue_amount": 35000.00,
+            "overdue_count": 8,
+            "currency": "EUR",
+            "items": [
+                {
+                    "account_code": "400",
+                    "account_name": "FTB Mobile B.V.",
+                    "invoice_number": 5124,
+                    "invoice_date": "2025-09-01",
+                    "due_date": "2025-09-15",
+                    "original_amount": 605.00,
+                    "remaining_amount": 605.00,
+                    "is_credit": false,
+                    "description": "FTB Mobile september Hosting",
+                    "payment_terms": "14 dagen",
+                    "days_overdue": 99,
+                    "currency": "EUR"
+                }
+            ]
+        }
+    """
+    # Validate top parameter
+    if top < 1:
+        return {
+            "error": "invalid_parameter",
+            "message": "Parameter 'top' must be at least 1",
+            "action": "Provide a value between 1 and 1000",
+        }
+    if top > 1000:
+        return {
+            "error": "invalid_parameter",
+            "message": "Parameter 'top' must be at most 1000",
+            "action": "Provide a value between 1 and 1000",
+        }
+
+    try:
+        client = get_client()
+
+        # Get division if not specified
+        if division is None:
+            division = await client.get_current_division()
+
+        # Fetch receivables
+        items = await client.fetch_open_receivables(
+            division,
+            top=top,
+            account_code=account_code,
+            overdue_only=overdue_only,
+        )
+
+        # Calculate summary statistics
+        total_receivables = 0.0
+        total_credits = 0.0
+        overdue_amount = 0.0
+        invoice_count = 0
+        credit_count = 0
+        overdue_count = 0
+
+        for item in items:
+            if item.is_credit:
+                total_credits += item.remaining_amount
+                credit_count += 1
+            else:
+                total_receivables += item.remaining_amount
+                invoice_count += 1
+                if item.days_overdue > 0:
+                    overdue_amount += item.remaining_amount
+                    overdue_count += 1
+
+        # Get currency from first item or default
+        currency = items[0].currency if items else "EUR"
+
+        return {
+            "division": division,
+            "total_receivables": round(total_receivables, 2),
+            "total_credits": round(total_credits, 2),
+            "net_receivables": round(total_receivables - total_credits, 2),
+            "invoice_count": invoice_count,
+            "credit_count": credit_count,
+            "overdue_amount": round(overdue_amount, 2),
+            "overdue_count": overdue_count,
+            "currency": currency,
+            "items": [item.to_dict() for item in items],
+        }
+
+    except ExactOnlineError as e:
+        logger.error(f"Error getting open receivables: {e.message}")
+        return e.to_dict()
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        return {"error": str(e), "action": "Check server logs for details"}
+
+
+@mcp.tool()
+async def get_customer_open_items(
+    account_code: str,
+    division: int | None = None,
+) -> dict[str, Any]:
+    """Get all open items for a specific customer.
+
+    Returns all outstanding invoices and credits for a single customer,
+    with summary totals. Use this to understand a specific customer's
+    payment status.
+
+    Args:
+        account_code: Customer account code (required, e.g., "400").
+        division: Division code. If not specified, uses current division.
+
+    Returns:
+        Dictionary with customer info and their open items.
+
+    Example:
+        >>> await get_customer_open_items(account_code="400")
+        {
+            "division": 1913290,
+            "customer": {
+                "account_code": "400",
+                "account_name": "FTB Mobile B.V."
+            },
+            "total_receivables": 12000.00,
+            "total_credits": 0.00,
+            "net_receivables": 12000.00,
+            "invoice_count": 5,
+            "overdue_amount": 8000.00,
+            "overdue_count": 3,
+            "currency": "EUR",
+            "items": [...]
+        }
+    """
+    # Validate required parameter
+    if not account_code or not account_code.strip():
+        return {
+            "error": "missing_parameter",
+            "message": "Parameter 'account_code' is required",
+            "action": "Provide the customer account code",
+        }
+
+    try:
+        client = get_client()
+
+        # Get division if not specified
+        if division is None:
+            division = await client.get_current_division()
+
+        # Fetch receivables for this customer (no top limit for customer view)
+        items = await client.fetch_open_receivables(
+            division,
+            top=1000,
+            account_code=account_code.strip(),
+        )
+
+        if not items:
+            return {
+                "error": "not_found",
+                "message": f"No open items found for customer '{account_code}'",
+                "action": "Verify the account code is correct",
+            }
+
+        # Calculate summary statistics
+        total_receivables = 0.0
+        total_credits = 0.0
+        overdue_amount = 0.0
+        invoice_count = 0
+        credit_count = 0
+        overdue_count = 0
+
+        for item in items:
+            if item.is_credit:
+                total_credits += item.remaining_amount
+                credit_count += 1
+            else:
+                total_receivables += item.remaining_amount
+                invoice_count += 1
+                if item.days_overdue > 0:
+                    overdue_amount += item.remaining_amount
+                    overdue_count += 1
+
+        # Get customer details from first item
+        customer_name = items[0].account_name
+        currency = items[0].currency
+
+        return {
+            "division": division,
+            "customer": {
+                "account_code": account_code,
+                "account_name": customer_name,
+            },
+            "total_receivables": round(total_receivables, 2),
+            "total_credits": round(total_credits, 2),
+            "net_receivables": round(total_receivables - total_credits, 2),
+            "invoice_count": invoice_count,
+            "credit_count": credit_count,
+            "overdue_amount": round(overdue_amount, 2),
+            "overdue_count": overdue_count,
+            "currency": currency,
+            "items": [item.to_dict() for item in items],
+        }
+
+    except ExactOnlineError as e:
+        logger.error(f"Error getting customer open items: {e.message}")
+        return e.to_dict()
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        return {"error": str(e), "action": "Check server logs for details"}
+
+
+@mcp.tool()
+async def get_overdue_receivables(
+    division: int | None = None,
+    days_overdue: int = 0,
+    top: int = 100,
+) -> dict[str, Any]:
+    """List receivables past their due date, sorted by days overdue.
+
+    Returns overdue invoices (not credits) sorted with most overdue first.
+    Use this to prioritize collection efforts.
+
+    Args:
+        division: Division code. If not specified, uses current division.
+        days_overdue: Minimum days overdue (default 0 = all overdue items).
+        top: Maximum records to return (1-1000, default 100).
+
+    Returns:
+        Dictionary with overdue totals and items sorted by days overdue.
+
+    Example:
+        >>> await get_overdue_receivables(days_overdue=30)
+        {
+            "division": 1913290,
+            "as_of_date": "2025-12-23",
+            "min_days_overdue": 30,
+            "total_overdue": 35000.00,
+            "invoice_count": 8,
+            "currency": "EUR",
+            "items": [
+                {
+                    "account_code": "400",
+                    "account_name": "FTB Mobile B.V.",
+                    "invoice_number": 4982,
+                    "invoice_date": "2025-03-01",
+                    "due_date": "2025-03-15",
+                    "original_amount": 605.00,
+                    "remaining_amount": 605.00,
+                    "is_credit": false,
+                    "description": "maart",
+                    "payment_terms": "14 dagen",
+                    "days_overdue": 283,
+                    "currency": "EUR"
+                }
+            ]
+        }
+    """
+    # Validate parameters
+    if top < 1:
+        return {
+            "error": "invalid_parameter",
+            "message": "Parameter 'top' must be at least 1",
+            "action": "Provide a value between 1 and 1000",
+        }
+    if top > 1000:
+        return {
+            "error": "invalid_parameter",
+            "message": "Parameter 'top' must be at most 1000",
+            "action": "Provide a value between 1 and 1000",
+        }
+    if days_overdue < 0:
+        return {
+            "error": "invalid_parameter",
+            "message": "Parameter 'days_overdue' must be at least 0",
+            "action": "Provide a non-negative number",
+        }
+
+    try:
+        client = get_client()
+
+        # Get division if not specified
+        if division is None:
+            division = await client.get_current_division()
+
+        # Fetch overdue receivables
+        items = await client.fetch_open_receivables(
+            division,
+            top=1000,  # Fetch all to filter and sort
+            overdue_only=True,
+        )
+
+        # Filter by minimum days overdue and exclude credits
+        filtered = [
+            item for item in items
+            if not item.is_credit and item.days_overdue >= days_overdue
+        ]
+
+        # Sort by days overdue descending (most overdue first)
+        filtered.sort(key=lambda x: x.days_overdue, reverse=True)
+
+        # Apply top limit after sorting
+        filtered = filtered[:top]
+
+        # Calculate totals
+        total_overdue = sum(item.remaining_amount for item in filtered)
+
+        # Get currency from first item or default
+        currency = filtered[0].currency if filtered else "EUR"
+
+        return {
+            "division": division,
+            "as_of_date": date.today().isoformat(),
+            "min_days_overdue": days_overdue,
+            "total_overdue": round(total_overdue, 2),
+            "invoice_count": len(filtered),
+            "currency": currency,
+            "items": [item.to_dict() for item in filtered],
+        }
+
+    except ExactOnlineError as e:
+        logger.error(f"Error getting overdue receivables: {e.message}")
         return e.to_dict()
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
