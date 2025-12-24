@@ -17,6 +17,8 @@ This module defines the FastMCP server instance and the tools:
 - get_open_receivables: List open invoices with filtering
 - get_customer_open_items: Open items for a specific customer
 - get_overdue_receivables: Overdue receivables sorted by age
+- get_bank_transactions: Bank transaction lines with filtering
+- get_purchase_invoices: Purchase invoices from suppliers
 """
 
 import logging
@@ -1562,6 +1564,324 @@ async def get_overdue_receivables(
 
     except ExactOnlineError as e:
         logger.error(f"Error getting overdue receivables: {e.message}")
+        return e.to_dict()
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        return {"error": str(e), "action": "Check server logs for details"}
+
+
+# =============================================================================
+# Bank & Purchase Data Tools (Feature 004-bank-purchase-data)
+# =============================================================================
+
+
+@mcp.tool()
+async def get_bank_transactions(
+    division: int | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    gl_account_code: str | None = None,
+    top: int = 100,
+) -> dict[str, Any]:
+    """List bank transaction lines with optional filtering.
+
+    Returns individual bank entry lines from bank journals. Each transaction
+    includes date, amount, description, and related party information.
+    Negative amounts represent money leaving the account (payments),
+    positive amounts represent money entering (receipts).
+
+    Args:
+        division: Division code. If not specified, uses current division.
+        start_date: Filter from date (YYYY-MM-DD).
+        end_date: Filter to date (YYYY-MM-DD).
+        gl_account_code: Filter by bank GL account code (e.g., "1055" for ING Bank).
+        top: Maximum records to return (1-1000, default 100).
+
+    Returns:
+        Dictionary with transaction list and applied filters.
+
+    Example:
+        >>> await get_bank_transactions(gl_account_code="1055", top=10)
+        {
+            "division": 1913290,
+            "count": 10,
+            "filters_applied": {
+                "start_date": null,
+                "end_date": null,
+                "gl_account_code": "1055"
+            },
+            "items": [
+                {
+                    "id": "abc123-...",
+                    "date": "2025-12-15",
+                    "description": "Betaling factuur 5124",
+                    "amount": -605.00,
+                    "account_code": "400",
+                    "account_name": "FTB Mobile B.V.",
+                    "gl_account_code": "1055",
+                    "gl_account_description": "ING Bank",
+                    "entry_number": 20251215,
+                    "document_subject": "Bank ING december",
+                    "notes": null,
+                    "our_ref": 5124
+                }
+            ]
+        }
+    """
+    # Validate top parameter
+    if top < 1:
+        return {
+            "error": "invalid_parameter",
+            "message": "Parameter 'top' must be at least 1",
+            "action": "Provide a value between 1 and 1000",
+        }
+    if top > 1000:
+        return {
+            "error": "invalid_parameter",
+            "message": "Parameter 'top' must be at most 1000",
+            "action": "Provide a value between 1 and 1000",
+        }
+
+    # Validate date range if provided
+    if start_date and end_date:
+        try:
+            start = date.fromisoformat(start_date)
+            end = date.fromisoformat(end_date)
+            if start > end:
+                return {
+                    "error": "invalid_date_range",
+                    "message": "start_date must be before or equal to end_date",
+                    "action": "Provide valid date range in ISO format (YYYY-MM-DD)",
+                }
+        except ValueError as e:
+            return {
+                "error": "invalid_date_format",
+                "message": f"Invalid date format: {e}",
+                "action": "Use ISO format: YYYY-MM-DD",
+            }
+    elif start_date or end_date:
+        # Validate individual dates
+        for date_str, name in [(start_date, "start_date"), (end_date, "end_date")]:
+            if date_str:
+                try:
+                    date.fromisoformat(date_str)
+                except ValueError as e:
+                    return {
+                        "error": "invalid_date_format",
+                        "message": f"Invalid {name} format: {e}",
+                        "action": "Use ISO format: YYYY-MM-DD",
+                    }
+
+    try:
+        client = get_client()
+
+        # Get division if not specified
+        if division is None:
+            division = await client.get_current_division()
+
+        # Fetch bank transactions
+        from exactonline_mcp.client import parse_odata_date
+        results = await client.fetch_bank_transactions(
+            division,
+            top=top,
+            start_date=start_date,
+            end_date=end_date,
+            gl_account_code=gl_account_code,
+        )
+
+        # Transform results to BankTransaction format
+        items = []
+        for r in results:
+            items.append({
+                "id": r.get("ID", ""),
+                "date": parse_odata_date(r.get("Date")) or "",
+                "description": r.get("Description", "") or "",
+                "amount": float(r.get("AmountDC", 0) or 0),
+                "account_code": (r.get("AccountCode") or "").strip() or None,
+                "account_name": r.get("AccountName") or None,
+                "gl_account_code": (r.get("GLAccountCode") or "").strip(),
+                "gl_account_description": r.get("GLAccountDescription", "") or "",
+                "entry_number": r.get("EntryNumber", 0),
+                "document_subject": r.get("DocumentSubject", "") or "",
+                "notes": r.get("Notes") or None,
+                "our_ref": r.get("OurRef") if r.get("OurRef") else None,
+            })
+
+        return {
+            "division": division,
+            "count": len(items),
+            "filters_applied": {
+                "start_date": start_date,
+                "end_date": end_date,
+                "gl_account_code": gl_account_code,
+            },
+            "items": items,
+        }
+
+    except ExactOnlineError as e:
+        logger.error(f"Error getting bank transactions: {e.message}")
+        return e.to_dict()
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        return {"error": str(e), "action": "Check server logs for details"}
+
+
+@mcp.tool()
+async def get_purchase_invoices(
+    division: int | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    supplier_code: str | None = None,
+    top: int = 100,
+) -> dict[str, Any]:
+    """List purchase invoices from suppliers.
+
+    Returns purchase invoices with supplier, amounts, dates, and status.
+    Status codes: 10=Draft, 20=Open, 50=Processed/Paid.
+
+    Note: This endpoint requires the Purchase module in Exact Online.
+    If the module is not available for your division, a clear error
+    message will be returned.
+
+    Args:
+        division: Division code. If not specified, uses current division.
+        start_date: Invoice date from (YYYY-MM-DD).
+        end_date: Invoice date to (YYYY-MM-DD).
+        supplier_code: Filter by supplier account code.
+        top: Maximum records to return (1-1000, default 100).
+
+    Returns:
+        Dictionary with invoice list and applied filters.
+
+    Example:
+        >>> await get_purchase_invoices(top=5)
+        {
+            "division": 1913290,
+            "count": 5,
+            "filters_applied": {
+                "start_date": null,
+                "end_date": null,
+                "supplier_code": null
+            },
+            "items": [
+                {
+                    "id": "xyz789-...",
+                    "invoice_number": 12345,
+                    "invoice_date": "2025-12-01",
+                    "due_date": "2025-12-31",
+                    "supplier_code": "700",
+                    "supplier_name": "Office Supplies B.V.",
+                    "amount": 1250.00,
+                    "currency": "EUR",
+                    "status": 20,
+                    "status_description": "Open",
+                    "description": "Kantoorbenodigdheden december",
+                    "payment_condition": "30 dagen netto"
+                }
+            ]
+        }
+    """
+    # Validate top parameter
+    if top < 1:
+        return {
+            "error": "invalid_parameter",
+            "message": "Parameter 'top' must be at least 1",
+            "action": "Provide a value between 1 and 1000",
+        }
+    if top > 1000:
+        return {
+            "error": "invalid_parameter",
+            "message": "Parameter 'top' must be at most 1000",
+            "action": "Provide a value between 1 and 1000",
+        }
+
+    # Validate date range if provided
+    if start_date and end_date:
+        try:
+            start = date.fromisoformat(start_date)
+            end = date.fromisoformat(end_date)
+            if start > end:
+                return {
+                    "error": "invalid_date_range",
+                    "message": "start_date must be before or equal to end_date",
+                    "action": "Provide valid date range in ISO format (YYYY-MM-DD)",
+                }
+        except ValueError as e:
+            return {
+                "error": "invalid_date_format",
+                "message": f"Invalid date format: {e}",
+                "action": "Use ISO format: YYYY-MM-DD",
+            }
+    elif start_date or end_date:
+        # Validate individual dates
+        for date_str, name in [(start_date, "start_date"), (end_date, "end_date")]:
+            if date_str:
+                try:
+                    date.fromisoformat(date_str)
+                except ValueError as e:
+                    return {
+                        "error": "invalid_date_format",
+                        "message": f"Invalid {name} format: {e}",
+                        "action": "Use ISO format: YYYY-MM-DD",
+                    }
+
+    try:
+        client = get_client()
+
+        # Get division if not specified
+        if division is None:
+            division = await client.get_current_division()
+
+        # Fetch purchase invoices
+        from exactonline_mcp.client import parse_odata_date
+        from exactonline_mcp.exceptions import DivisionNotAccessibleError
+
+        try:
+            results = await client.fetch_purchase_invoices(
+                division,
+                top=top,
+                start_date=start_date,
+                end_date=end_date,
+                supplier_code=supplier_code,
+            )
+        except DivisionNotAccessibleError:
+            return {
+                "error": "module_not_available",
+                "message": "Purchase module not enabled for this division",
+                "action": "Contact your Exact Online administrator to enable the Purchase module",
+            }
+
+        # Transform results to PurchaseInvoice format
+        items = []
+        for r in results:
+            items.append({
+                "id": r.get("ID", ""),
+                "invoice_number": r.get("InvoiceNumber", 0),
+                "invoice_date": parse_odata_date(r.get("InvoiceDate")) or "",
+                "due_date": parse_odata_date(r.get("DueDate")),
+                "supplier_code": (r.get("SupplierCode") or "").strip(),
+                "supplier_name": r.get("SupplierName", "") or "",
+                "amount": float(r.get("AmountDC", 0) or 0),
+                "currency": r.get("Currency", "EUR") or "EUR",
+                "status": r.get("Status", 0),
+                "status_description": r.get("StatusDescription", "") or "",
+                "description": r.get("Description", "") or "",
+                "payment_condition": r.get("PaymentConditionDescription") or None,
+            })
+
+        return {
+            "division": division,
+            "count": len(items),
+            "filters_applied": {
+                "start_date": start_date,
+                "end_date": end_date,
+                "supplier_code": supplier_code,
+            },
+            "items": items,
+        }
+
+    except ExactOnlineError as e:
+        logger.error(f"Error getting purchase invoices: {e.message}")
         return e.to_dict()
     except Exception as e:
         logger.error(f"Unexpected error: {e}")

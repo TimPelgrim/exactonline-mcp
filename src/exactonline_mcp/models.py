@@ -636,3 +636,108 @@ class OpenReceivablesSummary:
             "currency": self.currency,
             "items": [item.to_dict() for item in self.items],
         }
+
+
+# =============================================================================
+# Bank & Purchase Data Models (Feature 004-bank-purchase-data)
+# =============================================================================
+
+
+@dataclass
+class BankTransaction:
+    """Single bank transaction line from a bank entry.
+
+    Args:
+        id: Exact Online transaction line GUID.
+        date: Transaction date (ISO format YYYY-MM-DD).
+        description: Transaction description/memo.
+        amount: Amount in default currency (negative = outflow, positive = inflow).
+        account_code: Related party code (customer/supplier), if any.
+        account_name: Related party name, if any.
+        gl_account_code: GL account code (bank account, e.g., "1055").
+        gl_account_description: GL account name (e.g., "ING Bank").
+        entry_number: Journal entry number.
+        document_subject: Source document description.
+        notes: Additional notes/memo.
+        our_ref: Internal reference number.
+    """
+
+    id: str
+    date: str
+    description: str
+    amount: float
+    account_code: str | None
+    account_name: str | None
+    gl_account_code: str
+    gl_account_description: str
+    entry_number: int
+    document_subject: str
+    notes: str | None
+    our_ref: int | None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "id": self.id,
+            "date": self.date,
+            "description": self.description,
+            "amount": self.amount,
+            "account_code": self.account_code,
+            "account_name": self.account_name,
+            "gl_account_code": self.gl_account_code,
+            "gl_account_description": self.gl_account_description,
+            "entry_number": self.entry_number,
+            "document_subject": self.document_subject,
+            "notes": self.notes,
+            "our_ref": self.our_ref,
+        }
+
+
+@dataclass
+class PurchaseInvoice:
+    """Purchase invoice from a supplier.
+
+    Args:
+        id: Exact Online invoice GUID.
+        invoice_number: Invoice number.
+        invoice_date: Invoice date (ISO format YYYY-MM-DD).
+        due_date: Payment due date (ISO format YYYY-MM-DD).
+        supplier_code: Supplier account code.
+        supplier_name: Supplier name.
+        amount: Invoice amount in default currency.
+        currency: Currency code (e.g., "EUR").
+        status: Invoice status code (10=Draft, 20=Open, 50=Processed/Paid).
+        status_description: Human-readable status.
+        description: Invoice description/memo.
+        payment_condition: Payment terms description.
+    """
+
+    id: str
+    invoice_number: int
+    invoice_date: str
+    due_date: str | None
+    supplier_code: str
+    supplier_name: str
+    amount: float
+    currency: str
+    status: int
+    status_description: str
+    description: str
+    payment_condition: str | None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "id": self.id,
+            "invoice_number": self.invoice_number,
+            "invoice_date": self.invoice_date,
+            "due_date": self.due_date,
+            "supplier_code": self.supplier_code,
+            "supplier_name": self.supplier_name,
+            "amount": self.amount,
+            "currency": self.currency,
+            "status": self.status,
+            "status_description": self.status_description,
+            "description": self.description,
+            "payment_condition": self.payment_condition,
+        }

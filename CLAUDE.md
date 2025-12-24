@@ -93,9 +93,9 @@ git log --oneline v0.1.0..HEAD
 
 ## Recent Changes
 
+- 004-bank-purchase-data: Bank & purchase data tools (get_bank_transactions, get_purchase_invoices)
 - 003-open-receivables: Open receivables tools (get_open_receivables, get_customer_open_items, get_overdue_receivables)
 - 002-revenue-tools: Revenue analysis tools (get_revenue_by_period, get_revenue_by_customer, get_revenue_by_project)
-- 001-balance-sheet-financial: Financial reporting tools (get_profit_loss_overview, get_gl_account_balance, get_balance_sheet_summary, list_gl_account_balances, get_aging_receivables, get_aging_payables, get_gl_account_transactions)
 
 <!-- MANUAL ADDITIONS START -->
 ## Implementation Notes
@@ -154,4 +154,15 @@ financial/ReportingBalance?$filter=ReportingYear eq 2024 and ReportingPeriod ge 
 - Filter `IsFullyPaid eq false` for open items only
 - `days_overdue` calculated as (today - due_date).days
 - Different from `AgingReceivablesList` which shows bucketed totals per customer
+
+## Bank & Purchase Data API Notes
+
+- Bank transactions: `financialtransaction/BankEntryLines` - individual transaction lines
+- `AmountDC`: Negative = outflow (payment), Positive = inflow (receipt)
+- `GLAccountCode`: Bank account code (e.g., "1055" for ING Bank)
+- `AccountCode`/`AccountName`: Related party (customer/supplier) if applicable
+- `OurRef`: Often contains invoice number for payment matching
+- Purchase invoices: `purchase/PurchaseInvoices` - may require Purchase module
+- Status codes: 10=Draft, 20=Open, 50=Processed/Paid
+- Handle `DivisionNotAccessibleError` gracefully for module unavailability
 <!-- MANUAL ADDITIONS END -->

@@ -4,11 +4,12 @@ A Model Context Protocol (MCP) server providing read-only access to Exact Online
 
 ## Features
 
-- **16 tools** for querying Exact Online data
+- **18 tools** for querying Exact Online data
 - **Revenue analysis** - by period, customer, or project with year-over-year comparison
 - **Financial reporting** - P&L overview, balance sheet, GL account balances
 - **Aging reports** - outstanding receivables and payables by age bucket
 - **Open receivables** - individual invoice detail, customer-specific views, overdue tracking
+- **Bank & purchase data** - bank transaction lines, purchase invoices from suppliers
 - **Discovery tools** - explore any Exact Online API endpoint
 
 ## Security Considerations
@@ -216,6 +217,12 @@ Replace `/path/to/exactonline-mcp` with the actual path to your installation.
 | `get_customer_open_items` | All open items for a specific customer |
 | `get_overdue_receivables` | Overdue receivables sorted by days overdue |
 
+### Bank & Purchase Data Tools
+| Tool | Description |
+|------|-------------|
+| `get_bank_transactions` | Bank transaction lines with date/account filtering |
+| `get_purchase_invoices` | Purchase invoices from suppliers (requires Purchase module) |
+
 ## Example Prompts
 
 ```
@@ -233,6 +240,9 @@ Replace `/path/to/exactonline-mcp` with the actual path to your installation.
 "Which invoices are overdue?"
 "What's outstanding for customer 400?"
 "Show invoices more than 30 days overdue"
+"Show bank transactions from last month"
+"What payments did we make from the ING account?"
+"List purchase invoices from December"
 ```
 
 ## Troubleshooting

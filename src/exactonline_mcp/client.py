@@ -1490,3 +1490,133 @@ class ExactOnlineClient:
             ))
 
         return transactions
+
+    # =========================================================================
+    # Bank & Purchase Data Functions (Feature 004-bank-purchase-data)
+    # =========================================================================
+
+    async def fetch_bank_transactions(
+        self,
+        division: int,
+        top: int = 100,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        gl_account_code: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Fetch bank transaction lines from financialtransaction/BankEntryLines.
+
+        Args:
+            division: Division code.
+            top: Maximum records to return (1-1000, default 100).
+            start_date: Filter from date (YYYY-MM-DD, optional).
+            end_date: Filter to date (YYYY-MM-DD, optional).
+            gl_account_code: Filter by bank GL account code (e.g., "1055", optional).
+
+        Returns:
+            List of bank transaction records.
+        """
+        filters = []
+        if start_date:
+            filters.append(f"Date ge datetime'{start_date}'")
+        if end_date:
+            filters.append(f"Date le datetime'{end_date}'")
+        if gl_account_code:
+            safe_code = sanitize_odata_string(gl_account_code.strip())
+            filters.append(f"trim(GLAccountCode) eq '{safe_code}'")
+
+        select_fields = [
+            "ID",
+            "Date",
+            "Description",
+            "AmountDC",
+            "AccountCode",
+            "AccountName",
+            "GLAccountCode",
+            "GLAccountDescription",
+            "EntryNumber",
+            "DocumentSubject",
+            "Notes",
+            "OurRef",
+        ]
+
+        data = await self.get(
+            endpoint="financialtransaction/BankEntryLines",
+            division=division,
+            filter=" and ".join(filters) if filters else None,
+            select=",".join(select_fields),
+            top=min(top, 1000),
+            orderby="Date desc",
+        )
+
+        d = data.get("d", [])
+        if isinstance(d, dict):
+            results = d.get("results", [])
+        else:
+            results = d if isinstance(d, list) else []
+
+        return results
+
+    async def fetch_purchase_invoices(
+        self,
+        division: int,
+        top: int = 100,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        supplier_code: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Fetch purchase invoices from purchase/PurchaseInvoices.
+
+        Args:
+            division: Division code.
+            top: Maximum records to return (1-1000, default 100).
+            start_date: Invoice date from (YYYY-MM-DD, optional).
+            end_date: Invoice date to (YYYY-MM-DD, optional).
+            supplier_code: Filter by supplier account code (optional).
+
+        Returns:
+            List of purchase invoice records.
+
+        Note:
+            This endpoint may require the Purchase module subscription.
+            If the module is not available, a DivisionNotAccessibleError is raised.
+        """
+        filters = []
+        if start_date:
+            filters.append(f"InvoiceDate ge datetime'{start_date}'")
+        if end_date:
+            filters.append(f"InvoiceDate le datetime'{end_date}'")
+        if supplier_code:
+            safe_code = sanitize_odata_string(supplier_code.strip())
+            filters.append(f"trim(SupplierCode) eq '{safe_code}'")
+
+        select_fields = [
+            "ID",
+            "InvoiceNumber",
+            "InvoiceDate",
+            "DueDate",
+            "SupplierCode",
+            "SupplierName",
+            "AmountDC",
+            "Currency",
+            "Status",
+            "StatusDescription",
+            "Description",
+            "PaymentConditionDescription",
+        ]
+
+        data = await self.get(
+            endpoint="purchase/PurchaseInvoices",
+            division=division,
+            filter=" and ".join(filters) if filters else None,
+            select=",".join(select_fields),
+            top=min(top, 1000),
+            orderby="InvoiceDate desc",
+        )
+
+        d = data.get("d", [])
+        if isinstance(d, dict):
+            results = d.get("results", [])
+        else:
+            results = d if isinstance(d, list) else []
+
+        return results
