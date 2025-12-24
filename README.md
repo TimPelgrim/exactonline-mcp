@@ -111,6 +111,7 @@ You can check what changed since your last update:
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| v0.2.0 | Dec 2024 | Added 5 new tools: open receivables (3), bank & purchase data (2) |
 | v0.1.0 | Dec 2024 | Initial release with 13 tools for revenue, financial reporting, and discovery |
 
 ## Exact Online App Setup

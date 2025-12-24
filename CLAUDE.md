@@ -75,6 +75,7 @@ git log --oneline v0.1.0..HEAD
 
 ### Version history
 
+- `v0.2.0` - Added open receivables tools (3) and bank & purchase data tools (2)
 - `v0.1.0` - Initial release with 13 MCP tools (discovery, revenue, financial)
 
 ## Code Style
